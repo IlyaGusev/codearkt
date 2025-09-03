@@ -80,43 +80,45 @@ def create_agent_endpoint(
     async def agent_tool(request: AgentRequest) -> Any:
         session_id = request.session_id or get_unique_id()
 
-        if request.stream:
-
-            async def stream_response() -> AsyncGenerator[str, None]:
-                task = asyncio.create_task(
-                    agent_instance.ainvoke(
-                        messages=request.messages,
-                        session_id=session_id,
-                        event_bus=event_bus,
-                        server_host=server_host,
-                        server_port=server_port,
-                    )
-                )
-                event_bus.register_task(
+        def _start_agent_task() -> asyncio.Task[Any]:
+            task = asyncio.create_task(
+                agent_instance.ainvoke(
+                    messages=request.messages,
                     session_id=session_id,
-                    agent_name=agent_instance.name,
-                    task=task,
+                    event_bus=event_bus,
+                    server_host=server_host,
+                    server_port=server_port,
                 )
-                try:
-                    async for event in event_bus.stream_events(session_id):
-                        yield event.model_dump_json()
-                finally:
-                    _log(f"Finishing session for agent {agent_instance.name}", session_id)
-                    event_bus.cancel_session(session_id)
+            )
+            event_bus.register_task(
+                session_id=session_id,
+                agent_name=agent_instance.name,
+                task=task,
+            )
+            return task
 
+        def _finish_session() -> None:
+            _log(f"Finishing session for agent {agent_instance.name}", session_id)
+            event_bus.cancel_session(session_id)
+
+        async def stream_response() -> AsyncGenerator[str, None]:
+            try:
+                async for event in event_bus.stream_events(session_id):
+                    yield event.model_dump_json()
+            finally:
+                _finish_session()
+
+        task = _start_agent_task()
+
+        if request.stream:
             return StreamingResponse(
                 stream_response(),
-                media_type="application/json",
+                media_type="application/x-ndjson",
                 headers=AGENT_RESPONSE_HEADERS,
             )
         else:
-            result = await agent_instance.ainvoke(
-                messages=request.messages,
-                session_id=session_id,
-                event_bus=event_bus,
-                server_host=server_host,
-                server_port=server_port,
-            )
+            result = await task
+            _finish_session()
             return result
 
     return agent_tool  # type: ignore

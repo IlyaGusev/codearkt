@@ -1,5 +1,6 @@
 from typing import List
 import httpx
+import traceback
 
 from mcp import ClientSession, Tool
 from mcp.client.streamable_http import streamablehttp_client
@@ -21,6 +22,7 @@ async def fetch_tools(url: str) -> List[Tool]:
                 tools_response = await session.list_tools()
                 all_tools.extend(tools_response.tools)
     except Exception:
+        traceback.print_exc()
         pass
 
     try:
@@ -40,6 +42,7 @@ async def fetch_tools(url: str) -> List[Tool]:
                     )
                 )
     except Exception:
+        traceback.print_exc()
         pass
 
     return all_tools
