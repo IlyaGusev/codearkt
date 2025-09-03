@@ -36,7 +36,7 @@ def main(host: str = DEFAULT_SERVER_HOST, port: int = DEFAULT_SERVER_PORT) -> No
     global _session_id
     while True:
         message = prompt(
-            "Your message, paste or type (Esc then Enter to accept):\n",
+            "Your message (Esc then Enter to accept):\n",
             multiline=True,
         )
         if message == "exit":

@@ -101,7 +101,7 @@ def create_agent_endpoint(
                     async for event in event_bus.stream_events(session_id):
                         yield event.model_dump_json()
                 finally:
-                    _log("Cancelling session", session_id)
+                    _log(f"Finishing session for agent {agent_instance.name}", session_id)
                     event_bus.cancel_session(session_id)
 
             return StreamingResponse(
@@ -148,7 +148,7 @@ def get_agent_app(
         )
 
     async def cancel_session(request: CancelRequest) -> Dict[str, str]:
-        _log("Cancelling session", request.session_id)
+        _log("Finishing session for all agents", request.session_id)
         event_bus.cancel_session(request.session_id)
         return {"status": "cancelled", "session_id": request.session_id}
 
