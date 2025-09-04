@@ -37,11 +37,13 @@ class AgentEventBus:
         if task is not None:
             self.running_tasks[session_id].append(task)
 
-    def cancel_session(self, session_id: str) -> None:
-        if session_id in self.running_tasks:
-            while self.running_tasks[session_id]:
-                task = self.running_tasks[session_id].pop()
-                task.cancel()
+    def finish_session(self, session_id: str) -> None:
+        tasks = self.running_tasks.pop(session_id, [])
+        while tasks:
+            task = tasks.pop()
+            task.cancel()
+        self.root_agent_name.pop(session_id, None)
+        self.queues.pop(session_id, None)
 
     async def publish_event(
         self,

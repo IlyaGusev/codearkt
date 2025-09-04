@@ -499,5 +499,6 @@ class CodeActAgent:
         )
 
     def _log(self, message: str, run_id: str, session_id: str, level: int = logging.INFO) -> None:
-        message = f"| {session_id:<8} | {run_id:<8} | {message}"
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        message = f"| {timestamp} | {session_id:<8} | {run_id:<8} | {message}"
         self.logger.log(level, message)

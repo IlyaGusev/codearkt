@@ -7,7 +7,7 @@ from codearkt.event_bus import AgentEvent
 from codearkt.llm import ChatMessage
 from codearkt.server import DEFAULT_SERVER_HOST, DEFAULT_SERVER_PORT
 
-HEADERS = {"Content-Type": "application/json", "Accept": "text/event-stream"}
+HEADERS = {"Content-Type": "application/json", "Accept": "application/x-ndjson"}
 
 
 def query_agent(

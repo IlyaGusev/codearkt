@@ -1,10 +1,14 @@
 import os
+import anyio
 import asyncio
 import functools
 import httpx
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Callable, Any, Optional
+from functools import partial
+
+from pydantic import ValidationError
 
 from mcp import ClientSession, Tool
 from mcp.types import ContentBlock
@@ -20,6 +24,16 @@ ToolReturnType = List[ContentBlock] | str | None
 _tool_schemas: Dict[str, Tool] = {}
 
 
+async def _message_handler(session: ClientSession, exc: Exception) -> None:
+    """
+    Custom message handler for ValidationError.
+    See https://github.com/modelcontextprotocol/python-sdk/issues/1144.
+    """
+    await anyio.lowlevel.checkpoint()
+    if isinstance(exc, ValidationError):
+        session._task_group.cancel_scope.cancel()
+
+
 async def _acall(tool: str, tool_server_port: int, *args: Any, **kwargs: Any) -> ToolReturnType:
     base_url = SERVER_URL_TEMPLATE.format(port=tool_server_port)
     async with streamablehttp_client(
@@ -33,6 +47,7 @@ async def _acall(tool: str, tool_server_port: int, *args: Any, **kwargs: Any) ->
     ):
         async with ClientSession(read_stream, write_stream) as session:
             await session.initialize()
+            session._message_handler = partial(_message_handler, session)
             arguments = dict(kwargs)
             if args and tool in _tool_schemas:
                 tool_schema = _tool_schemas[tool]

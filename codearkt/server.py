@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import datetime
 from typing import Dict, Any, Optional, List, Callable, AsyncGenerator
 
 import uvicorn
@@ -37,7 +38,8 @@ logger.setLevel(logging.INFO)
 
 
 def _log(message: str, session_id: str, level: int = logging.INFO) -> None:
-    message = f"| {session_id:<8} | {message}"
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    message = f"| {timestamp} | {session_id:<8} | {message}"
     logger.log(level, message)
 
 
@@ -97,16 +99,9 @@ def create_agent_endpoint(
             )
             return task
 
-        def _finish_session() -> None:
-            _log(f"Finishing session for agent {agent_instance.name}", session_id)
-            event_bus.cancel_session(session_id)
-
         async def stream_response() -> AsyncGenerator[str, None]:
-            try:
-                async for event in event_bus.stream_events(session_id):
-                    yield event.model_dump_json()
-            finally:
-                _finish_session()
+            async for event in event_bus.stream_events(session_id):
+                yield event.model_dump_json() + "\n"
 
         task = _start_agent_task()
 
@@ -118,7 +113,6 @@ def create_agent_endpoint(
             )
         else:
             result = await task
-            _finish_session()
             return result
 
     return agent_tool  # type: ignore
@@ -151,7 +145,7 @@ def get_agent_app(
 
     async def cancel_session(request: CancelRequest) -> Dict[str, str]:
         _log("Finishing session for all agents", request.session_id)
-        event_bus.cancel_session(request.session_id)
+        event_bus.finish_session(request.session_id)
         return {"status": "cancelled", "session_id": request.session_id}
 
     async def get_agents() -> List[AgentCard]:

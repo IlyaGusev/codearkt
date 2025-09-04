@@ -43,6 +43,6 @@ async def test_cancel_session_cancels_tasks() -> None:
 
     task = asyncio.create_task(long_running())
     bus.register_task(session_id=session_id, agent_name=agent_name, task=task)
-    bus.cancel_session(session_id)
+    bus.finish_session(session_id)
     await asyncio.sleep(0)
     assert task.cancelled(), "Task should be cancelled after cancel_session is called."
