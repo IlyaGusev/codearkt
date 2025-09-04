@@ -44,7 +44,6 @@ def main(
             break
 
         real_messages.append(ChatMessage(role="user", content=message))
-        print(real_messages)
         events = query_agent(
             real_messages, session_id=session_id, host=host, port=port, agent_name=root_agent_name
         )
