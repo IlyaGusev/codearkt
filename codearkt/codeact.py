@@ -154,7 +154,8 @@ class CodeActAgent:
             current_date = datetime.now().strftime("%Y-%m-%d")
             system_prompt = self.prompts.system.render(tools=tools, current_date=current_date)
 
-            messages = [ChatMessage(role="system", content=system_prompt)] + messages
+            if messages and messages[0].role not in ("system", "developer"):
+                messages = [ChatMessage(role="system", content=system_prompt)] + messages
 
             for step_number in range(1, self.max_iterations + 1):
                 # Optional planning step
@@ -186,6 +187,7 @@ class CodeActAgent:
                     session_id=session_id,
                     run_id=run_id,
                     event_bus=event_bus,
+                    step_number=step_number,
                 )
                 messages.extend(new_messages)
                 self._log(f"Step {step_number} completed", run_id=run_id, session_id=session_id)
@@ -245,7 +247,9 @@ class CodeActAgent:
         session_id: str,
         run_id: str,
         event_bus: AgentEventBus | None = None,
+        step_number: int | None = None,
     ) -> ChatMessages:
+        _ = step_number  # for logs only
         self._log(
             f"Step inputs: {messages}", run_id=run_id, session_id=session_id, level=logging.DEBUG
         )

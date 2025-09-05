@@ -77,8 +77,8 @@ class LLM:
             return messages
         tokens_count = count_openai_tokens(messages)
         first_messages = []
-        if messages[0].role == "system":
-            first_messages = messages[:1]
+        while messages and messages[0].role in ("system", "developer"):
+            first_messages.extend(messages[:1])
             messages = messages[1:]
         if messages[0].role == "user":
             first_messages.extend(messages[:1])

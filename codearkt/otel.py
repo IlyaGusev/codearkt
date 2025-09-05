@@ -1,4 +1,3 @@
-import json
 from typing import Any, Callable, Mapping, Tuple, Dict, Collection, Optional, List
 from inspect import signature
 import logging
@@ -7,7 +6,7 @@ from contextlib import suppress
 from opentelemetry import trace as trace_api
 from opentelemetry import context as context_api
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor  # type: ignore
-from openinference.instrumentation import get_attributes_from_context, safe_json_dumps
+from openinference.instrumentation import get_attributes_from_context
 from openinference.instrumentation import (
     OITracer,
     TraceConfig,
@@ -52,15 +51,10 @@ def _strip_method_args(arguments: Mapping[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in arguments.items() if key not in ("self", "cls")}
 
 
-def _get_input_value(method: Callable[..., Any], *args: Any, **kwargs: Any) -> str:
+def _get_arguments(method: Callable[..., Any], *args: Any, **kwargs: Any) -> Dict[str, Any]:
     arguments = _bind_arguments(method, *args, **kwargs)
     arguments = _strip_method_args(arguments)
-    return safe_json_dumps(arguments)
-
-
-def _get_input_messages(input_value: str) -> List[ChatMessage]:
-    input_messages_str: List[str] = json.loads(input_value)["messages"]
-    return [ChatMessage.model_validate_json(message_str) for message_str in input_messages_str]
+    return arguments
 
 
 def _format_message_content(message: ChatMessage) -> str:
@@ -75,8 +69,9 @@ def _format_message_content(message: ChatMessage) -> str:
     return content
 
 
-def _get_input_message_attributes(input_value: str) -> Dict[str, Any]:
-    input_messages = _get_input_messages(input_value)
+def _get_input_message_attributes(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    assert "messages" in arguments
+    input_messages = arguments["messages"]
     message_attributes = {}
     for idx, message in enumerate(input_messages):
         message_attributes[f"{LLM_INPUT_MESSAGES}.{idx}.{MESSAGE_ROLE}"] = message.role
@@ -119,12 +114,12 @@ class _AinvokeWrapper:
             token = context_api.attach(context_api.set_value(SESSION_ID, session_id))
 
         try:
-            input_value = _get_input_value(wrapped, *args, **kwargs)
-            input_messages = _get_input_messages(input_value)
+            arguments = _get_arguments(wrapped, *args, **kwargs)
+            input_messages = arguments["messages"]
             conversation = "\n\n".join(
                 [f"{message.role}: {message.content}" for message in input_messages]
             )
-            message_attributes = _get_input_message_attributes(input_value)
+            message_attributes = _get_input_message_attributes(arguments)
 
             with self._tracer.start_as_current_span(
                 span_name,
@@ -139,7 +134,7 @@ class _AinvokeWrapper:
                 try:
                     result = await wrapped(*args, **kwargs)
                     span.set_status(trace_api.StatusCode.OK)
-                    span.set_attribute(OUTPUT_VALUE, result)
+                    span.set_attribute(OUTPUT_VALUE, str(result))
                     return result
                 except Exception as e:
                     with suppress(Exception):
@@ -167,17 +162,21 @@ class _StepWrapper:
         if context_api.get_value(context_api._SUPPRESS_INSTRUMENTATION_KEY):
             return await wrapped(*args, **kwargs)
 
-        bound_args = _bind_arguments(wrapped, *args, **kwargs)
-        session_id: Optional[str] = bound_args.get("session_id")
+        arguments = _get_arguments(wrapped, *args, **kwargs)
+        session_id: Optional[str] = arguments.get("session_id")
+        step_number: Optional[int] = arguments.get("step_number")
+        message_attributes = _get_input_message_attributes(arguments)
+        input_messages = arguments["messages"]
+        conversation = "\n\n".join(
+            [f"{message.role}: {message.content}" for message in input_messages]
+        )
 
-        input_value = _get_input_value(wrapped, *args, **kwargs)
-        message_attributes = _get_input_message_attributes(input_value)
-
-        span_name = "Step"
+        span_name = f"Step {step_number}"
         with self._tracer.start_as_current_span(
             span_name,
             attributes={
-                OPENINFERENCE_SPAN_KIND: LLM,
+                OPENINFERENCE_SPAN_KIND: CHAIN,
+                INPUT_VALUE: conversation,
                 **message_attributes,
                 **({SESSION_ID: session_id} if session_id is not None else {}),
                 **dict(get_attributes_from_context()),
@@ -192,8 +191,7 @@ class _StepWrapper:
                 conversation = "\n\n".join(formatted_lines)
                 span.set_status(trace_api.StatusCode.OK)
                 span.set_attribute(OUTPUT_VALUE, conversation)
-                output_message_attributes = _get_output_message_attributes(result)
-                span.set_attributes(output_message_attributes)
+                span.set_attributes(_get_output_message_attributes(result))
                 return result
             except Exception as e:
                 with suppress(Exception):
@@ -218,21 +216,27 @@ class _ToolWrapper:
 
         span_name = "PythonExecutor"
 
-        input_value = _get_input_value(wrapped, *args, **kwargs)
+        arguments = _get_arguments(wrapped, *args, **kwargs)
         session_id: Optional[str] = getattr(instance, "session_id", None)
 
         with self._tracer.start_as_current_span(
             span_name,
             attributes={
                 OPENINFERENCE_SPAN_KIND: TOOL,
-                INPUT_VALUE: json.loads(input_value)["code"],
+                INPUT_VALUE: arguments["code"],
                 **({SESSION_ID: session_id} if session_id is not None else {}),
                 **dict(get_attributes_from_context()),
             },
         ) as span:
-            result: ExecResult = await wrapped(*args, **kwargs)
-            message = result.to_message()
-            content = _format_message_content(message)
+            try:
+                result: ExecResult = await wrapped(*args, **kwargs)
+                message = result.to_message()
+                content = _format_message_content(message)
+            except Exception as e:
+                with suppress(Exception):
+                    span.record_exception(e)
+                span.set_status(trace_api.StatusCode.ERROR)
+                raise
             span.set_attribute(OUTPUT_VALUE, content)
             if getattr(result, "error", None):
                 span.set_status(trace_api.StatusCode.ERROR)
@@ -246,14 +250,14 @@ class CodeActInstrumentor(BaseInstrumentor):  # type: ignore
         "_original_step_method",
         "_original_ainvoke_method",
         "_original_final_method",
-        "_original_tool_invoke_method",
+        "_original_tool_ainvoke_method",
         "_tracer",
     )
 
     _original_step_method: Optional[Callable[..., Any]]
     _original_ainvoke_method: Optional[Callable[..., Any]]
     _original_final_method: Optional[Callable[..., Any]]
-    _original_tool_invoke_method: Optional[Callable[..., Any]]
+    _original_tool_ainvoke_method: Optional[Callable[..., Any]]
     _tracer: OITracer
 
     def instrumentation_dependencies(self) -> Collection[str]:
@@ -302,7 +306,7 @@ class CodeActInstrumentor(BaseInstrumentor):  # type: ignore
             wrapper=ainvoke_wrapper,
         )
 
-        self._original_tool_invoke_method = getattr(PythonExecutor, "ainvoke", None)
+        self._original_tool_ainvoke_method = getattr(PythonExecutor, "ainvoke", None)
         tool_wrapper = _ToolWrapper(tracer=self._tracer)
         wrap_function_wrapper(
             module="codearkt.python_executor",
@@ -320,6 +324,6 @@ class CodeActInstrumentor(BaseInstrumentor):  # type: ignore
         if self._original_final_method is not None:
             setattr(CodeActAgent, "_handle_final_message", self._original_final_method)
             self._original_final_method = None
-        if self._original_tool_invoke_method is not None:
-            setattr(PythonExecutor, "invoke", self._original_tool_invoke_method)
-            self._original_tool_invoke_method = None
+        if self._original_tool_ainvoke_method is not None:
+            setattr(PythonExecutor, "ainvoke", self._original_tool_ainvoke_method)
+            self._original_tool_ainvoke_method = None
