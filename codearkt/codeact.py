@@ -440,8 +440,7 @@ class CodeActAgent:
             return ""
         if len(used_messages) <= last_n:
             return messages_to_string(used_messages)
-        used_messages = used_messages[-last_n:]
-        conversation = messages_to_string(used_messages)
+        conversation = messages_to_string(used_messages[-last_n:])
         first_message = messages_to_string(used_messages[:1])
         return f"First message:\n\n{first_message}\n\nLast {last_n} messages:\n\n{conversation}"
 
