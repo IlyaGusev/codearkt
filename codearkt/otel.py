@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import Any, Callable, Mapping, Tuple, Dict, Collection, Optional, List
 from inspect import signature
 import logging
@@ -54,6 +55,7 @@ def _strip_method_args(arguments: Mapping[str, Any]) -> dict[str, Any]:
 def _get_arguments(method: Callable[..., Any], *args: Any, **kwargs: Any) -> Dict[str, Any]:
     arguments = _bind_arguments(method, *args, **kwargs)
     arguments = _strip_method_args(arguments)
+    arguments = {key: deepcopy(value) for key, value in arguments.items()}
     return arguments
 
 

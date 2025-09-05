@@ -163,7 +163,9 @@ class CodeActAgent:
                     step_number == 1 or (step_number - 1) % self.planning_interval == 0
                 ):
                     self._log(
-                        f"Planning step {step_number} started", run_id=run_id, session_id=session_id
+                        f"Planning step {step_number} started, {len(messages)} messages",
+                        run_id=run_id,
+                        session_id=session_id,
                     )
                     new_messages = await self._run_planning_step(
                         messages=messages,
@@ -174,13 +176,17 @@ class CodeActAgent:
                     )
                     messages.extend(new_messages)
                     self._log(
-                        f"Planning step {step_number} completed",
+                        f"Planning step {step_number} completed, {len(messages)} messages",
                         run_id=run_id,
                         session_id=session_id,
                     )
 
                 # Main step
-                self._log(f"Step {step_number} started", run_id=run_id, session_id=session_id)
+                self._log(
+                    f"Step {step_number} started, {len(messages)} messages",
+                    run_id=run_id,
+                    session_id=session_id,
+                )
                 new_messages = await self._step(
                     messages,
                     python_executor=python_executor,
@@ -190,7 +196,11 @@ class CodeActAgent:
                     step_number=step_number,
                 )
                 messages.extend(new_messages)
-                self._log(f"Step {step_number} completed", run_id=run_id, session_id=session_id)
+                self._log(
+                    f"Step {step_number} completed, {len(messages)} messages",
+                    run_id=run_id,
+                    session_id=session_id,
+                )
                 if messages[-1].role == "assistant":
                     break
             else:
@@ -199,7 +209,11 @@ class CodeActAgent:
                     messages, session_id=session_id, run_id=run_id, event_bus=event_bus
                 )
                 messages.extend(new_messages)
-                self._log("Final step completed", run_id=run_id, session_id=session_id)
+                self._log(
+                    f"Final step completed, {len(messages)} messages",
+                    run_id=run_id,
+                    session_id=session_id,
+                )
 
         except Exception as e:
             self._log(
@@ -401,9 +415,11 @@ class CodeActAgent:
         last_n: int = PLANNING_LAST_N,
         content_max_length: int = PLANNING_CONTENT_MAX_LENGTH,
     ) -> str:
-        def messages_to_string(messages: ChatMessages) -> str:
+        messages = copy.deepcopy(messages)
+
+        def messages_to_string(messages_internal: ChatMessages) -> str:
             str_messages = []
-            for m in messages:
+            for m in messages_internal:
                 content = truncate_content(str(m.content), max_length=content_max_length)
                 str_messages.append(f"{m.role}: {content}")
             return "\n\n".join(str_messages)
@@ -437,6 +453,7 @@ class CodeActAgent:
         session_id: str,
         event_bus: AgentEventBus | None = None,
     ) -> ChatMessages:
+        messages = copy.deepcopy(messages)
         assert self.prompts.plan is not None, "Planning prompt is not set, but planning is enabled"
         assert (
             self.prompts.plan_prefix is not None
