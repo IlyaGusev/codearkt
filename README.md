@@ -6,7 +6,7 @@
 [![Stars](https://img.shields.io/github/stars/IlyaGusev/codearkt?style=social)](https://github.com/IlyaGusev/codearkt/stargazers)
 [![DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/IlyaGusev/codearkt)
 
-**CodeArkt** is a battery-included implementation of the **CodeAct** framework with support for the multi-agent architecture. Ship autonomous agents that can reason, write, execute & iterate over code - all from a single Python package.
+**CodeArkt** is a battery-included implementation of the **CodeAct** framework with support for the multi-agent architecture. Ship autonomous agents that can reason, write, execute & iterate over code. All from a single Python package.
 
 ---
 
@@ -15,7 +15,7 @@
 * **Multi-agent orchestration** – coordinate hierarchies of specialist agents.
 * **Secure Python sandbox** – secure, ephemeral Docker execution environment for code actions.
 * **First-class tool ecosystem** – auto-discover & register MCP tools.
-* **Drop-dead simple UI** – launch an elegant Gradio chat.
+* **Drop-dead simple UI** – launch an elegant Gradio chat or run the terminal client.
 * **Production ready** – typed codebase (`mypy --strict`), CI, tests, Docker & Apache-2.0 license.
 
 ---
@@ -88,7 +88,7 @@ uv run -m codearkt.gradio --port 5055
 | Agents | Hierarchical manager / worker pattern, pluggable prompts, configurable iteration limits |
 | Tools | Automatic discovery via MCP registry, Python execution (`python_interpreter`) |
 | Execution | Sandboxed temp directory, timeout, streamed chunks, cleanup hooks |
-| Observability | `AgentEventBus` publishes JSON events – integrate with logs, websockets or GUI |
+| Observability | `AgentEventBus` publishes JSON events – integrate with logs, websockets, or GUI. Opentelemetry is also supported. |
 | UI | Responsive Gradio Blocks chat with stop button, syntax-highlighted code & output panels |
 | Extensibility | Compose multiple `CodeActAgent` instances, add your own LLM backend, override prompts |
 
