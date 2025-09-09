@@ -254,6 +254,7 @@ async def _start_temporary_server(
     agent: CodeActAgent,
     mcp_config: Optional[Dict[str, Any]] = None,
     additional_tools: Optional[Dict[str, Callable[..., Any]]] = None,
+    add_mcp_server_prefixes: bool = True,
 ) -> tuple[uvicorn.Server, asyncio.Task[None], str, int]:
     event_bus = AgentEventBus()
     host = DEFAULT_SERVER_HOST
@@ -269,6 +270,7 @@ async def _start_temporary_server(
         server_port=port,
         additional_tools=additional_tools,
         event_bus=event_bus,
+        add_mcp_server_prefixes=add_mcp_server_prefixes,
     )
 
     config = uvicorn.Config(
@@ -293,11 +295,13 @@ async def run_query(
     agent: CodeActAgent,
     mcp_config: Optional[Dict[str, Any]] = None,
     additional_tools: Optional[Dict[str, Callable[..., Any]]] = None,
+    add_mcp_server_prefixes: bool = True,
 ) -> str:
     server, server_task, host, port = await _start_temporary_server(
         agent,
         mcp_config=mcp_config,
         additional_tools=additional_tools,
+        add_mcp_server_prefixes=add_mcp_server_prefixes,
     )
 
     try:
@@ -320,6 +324,7 @@ async def run_batch(
     mcp_config: Optional[Dict[str, Any]] = None,
     max_concurrency: int = 5,
     additional_tools: Optional[Dict[str, Callable[..., Any]]] = None,
+    add_mcp_server_prefixes: bool = True,
 ) -> List[str]:
     if not queries:
         return []
@@ -328,6 +333,7 @@ async def run_batch(
         agent,
         mcp_config=mcp_config,
         additional_tools=additional_tools,
+        add_mcp_server_prefixes=add_mcp_server_prefixes,
     )
 
     semaphore = asyncio.Semaphore(max_concurrency if max_concurrency > 0 else len(queries))

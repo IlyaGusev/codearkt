@@ -163,7 +163,7 @@ class CodeActAgent:
                     step_number == 1 or (step_number - 1) % self.planning_interval == 0
                 ):
                     self._log(
-                        f"Planning step {step_number} started, {len(messages)} messages",
+                        f"Planning step {step_number} started",
                         run_id=run_id,
                         session_id=session_id,
                     )
@@ -176,14 +176,14 @@ class CodeActAgent:
                     )
                     messages.extend(new_messages)
                     self._log(
-                        f"Planning step {step_number} completed, {len(messages)} messages",
+                        f"Planning step {step_number} completed",
                         run_id=run_id,
                         session_id=session_id,
                     )
 
                 # Main step
                 self._log(
-                    f"Step {step_number} started, {len(messages)} messages",
+                    f"Step {step_number} started",
                     run_id=run_id,
                     session_id=session_id,
                 )
@@ -197,7 +197,7 @@ class CodeActAgent:
                 )
                 messages.extend(new_messages)
                 self._log(
-                    f"Step {step_number} completed, {len(messages)} messages",
+                    f"Step {step_number} completed",
                     run_id=run_id,
                     session_id=session_id,
                 )
@@ -210,7 +210,7 @@ class CodeActAgent:
                 )
                 messages.extend(new_messages)
                 self._log(
-                    f"Final step completed, {len(messages)} messages",
+                    "Final step completed",
                     run_id=run_id,
                     session_id=session_id,
                 )
