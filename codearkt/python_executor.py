@@ -30,7 +30,7 @@ CPU_PERIOD: int = 100000
 EXEC_TIMEOUT: int = 24 * 60 * 60  # 24 hours
 CLEANUP_TIMEOUT: int = 10
 PIDS_LIMIT: int = 64
-NET_NAME: str = "sandbox_net"
+NET_NAME: str = "codearkt_sandbox_net"
 
 _CLIENT: Optional[DockerClient] = None
 _CONTAINER: Optional[Container] = None
@@ -127,10 +127,6 @@ def run_network(client: DockerClient) -> Network:
         net = client.networks.create(
             NET_NAME,
             driver="bridge",
-            internal=False,
-            options={
-                "com.docker.network.bridge.enable_ip_masquerade": "false",
-            },
         )
     return net
 
