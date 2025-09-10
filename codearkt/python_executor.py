@@ -21,7 +21,7 @@ from codearkt.tools import fetch_tools
 from codearkt.util import get_unique_id, truncate_content, is_correct_json
 
 
-SHA_DIGEST: str = "sha256:b40b5f899b278d01f46052e4f4e148d1ac0d12dfb5a54c84386985f0b2c935fa"
+SHA_DIGEST: str = "sha256:54b14fca72705bf30ea9051806748ff226ed9f59eeb032f54fb15fc3b7e5332c"
 DEFAULT_IMAGE: str = f"phoenix120/codearkt_http@{SHA_DIGEST}"
 IMAGE: str = os.getenv("CODEARKT_EXECUTOR_IMAGE", DEFAULT_IMAGE)
 MEM_LIMIT: str = "512m"
@@ -31,6 +31,7 @@ EXEC_TIMEOUT: int = 24 * 60 * 60  # 24 hours
 CLEANUP_TIMEOUT: int = 10
 PIDS_LIMIT: int = 64
 NET_NAME: str = "codearkt_sandbox_net"
+EXTERNAL_URL_ENV = os.getenv("CODEARKT_EXECUTOR_URL")
 
 _CLIENT: Optional[DockerClient] = None
 _CONTAINER: Optional[Container] = None
@@ -161,25 +162,29 @@ class PythonExecutor:
         tools_server_port: Optional[int] = None,
         interpreter_id: Optional[str] = None,
     ) -> None:
-        global _CLIENT, _CONTAINER
-
-        with _DOCKER_LOCK:
-            if not _CLIENT:
-                _CLIENT = init_docker()
-            client = _CLIENT
-
-            if not _CONTAINER:
-                net = run_network(client)
-                _CONTAINER = run_container(client, str(net.name))
-
-            self.container = _CONTAINER
         self.tools_server_host = tools_server_host
         self.tools_server_port = tools_server_port
         self.session_id = session_id
         self.interpreter_id: str = interpreter_id or get_unique_id()
         self.tool_names = tool_names
         self.tools_are_checked = False
-        self.url = self._get_url()
+
+        global _CLIENT, _CONTAINER
+        self.container = None
+        if EXTERNAL_URL_ENV:
+            self.url = EXTERNAL_URL_ENV.rstrip("/")
+        else:
+            with _DOCKER_LOCK:
+                if not _CLIENT:
+                    _CLIENT = init_docker()
+                client = _CLIENT
+
+                if not _CONTAINER:
+                    net = run_network(client)
+                    _CONTAINER = run_container(client, str(net.name))
+
+                self.container = _CONTAINER
+            self.url = self._get_url()
         self.is_ready = False
 
     async def ainvoke(self, code: str) -> ExecResult:

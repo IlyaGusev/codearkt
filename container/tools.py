@@ -16,7 +16,7 @@ from mcp.client.streamable_http import streamablehttp_client
 
 AGENT_TIMEOUT = int(os.getenv("AGENT_TIMEOUT", 24 * 60 * 60))
 TOOL_TIMEOUT = int(os.getenv("TOOL_TIMEOUT", 12 * 60 * 60))
-SERVER_URL_TEMPLATE = "http://host.docker.internal:{port}"
+SERVER_URL_TEMPLATE = os.getenv("SERVER_URL_TEMPLATE", "http://host.docker.internal:{port}")
 
 
 ToolReturnType = List[ContentBlock] | str | None

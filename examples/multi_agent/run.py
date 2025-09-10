@@ -17,9 +17,8 @@ current_dir = Path(__file__).parent
 
 PHOENIX_URL = os.getenv("PHOENIX_URL", "http://localhost:6006")
 PHOENIX_PROJECT_NAME = os.getenv("PHOENIX_PROJECT_NAME", "codearkt")
-MCP_CONFIG = {
-    "mcpServers": {"academia": {"url": "http://0.0.0.0:5056/mcp", "transport": "streamable-http"}}
-}
+ACADEMIA_MCP_URL = os.getenv("ACADEMIA_MCP_URL", "http://0.0.0.0:5056/mcp")
+MCP_CONFIG = {"mcpServers": {"academia": {"url": ACADEMIA_MCP_URL, "transport": "streamable-http"}}}
 
 LIBRARIAN_DESCRIPTION = """This team member runs gets and analyzes information from papers.
 He has access to ArXiv, Semantic Scholar, ACL Anthology, and web search.

@@ -1,0 +1,69 @@
+version: "3.9"
+
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: examples/multi_agent/Dockerfile
+    container_name: codearkt-app
+    environment:
+      - CODEARKT_EXECUTOR_URL=http://executor:8000
+      - ACADEMIA_MCP_URL=http://academia:${ACADEMIA_PORT:-5056}/mcp
+      - PHOENIX_URL=http://phoenix:6006
+      - PHOENIX_PROJECT_NAME=codearkt
+    env_file:
+      - .env
+    depends_on:
+      executor:
+        condition: service_healthy
+      phoenix:
+        condition: service_started
+      academia:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-5055}:5055"
+
+  executor:
+    image: phoenix120/codearkt_http@sha256:54b14fca72705bf30ea9051806748ff226ed9f59eeb032f54fb15fc3b7e5332c 
+    container_name: codearkt-executor
+    environment:
+      - SERVER_URL_TEMPLATE=http://app:{port}
+    read_only: true
+    tmpfs:
+      - /tmp:rw,size=64m
+      - /run:rw,size=16m
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512m
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import socket; s=socket.socket(); s.settimeout(1); s.connect(('localhost',8000)); s.close()"]
+      interval: 5s
+      timeout: 2s
+      retries: 30
+
+  phoenix:
+    image: arizephoenix/phoenix
+    container_name: phoenix
+    ports:
+      - "${PHOENIX_UI_PORT:-6006}:6006"
+      - "${PHOENIX_OTLP_PORT:-4317}:4317"
+
+  academia:
+    image: phoenix120/academia_mcp
+    container_name: academia
+    command: ["uv", "run", "-m", "academia_mcp", "--transport", "streamable-http", "--host", "0.0.0.0", "--port", "${ACADEMIA_PORT:-5056}"]
+    ports:
+      - "${ACADEMIA_PORT:-5056}:${ACADEMIA_PORT:-5056}"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import os,socket; p=int(os.environ.get('ACADEMIA_PORT',5056)); s=socket.socket(); s.settimeout(1); s.connect(('localhost',p)); s.close()"]
+      interval: 5s
+      timeout: 2s
+      retries: 30
+    env_file:
+      - .env
