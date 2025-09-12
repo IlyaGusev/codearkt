@@ -103,6 +103,9 @@ class LLM:
             if "max_tokens" in api_params:
                 api_params["max_completion_tokens"] = api_params.pop("max_tokens")
 
+        if "grok-code" in self._model_name:
+            api_params.pop("stop", None)
+
         messages = self._trim_messages(messages)
         casted_messages = [
             cast(ChatCompletionMessageParam, message.model_dump(exclude_none=True))

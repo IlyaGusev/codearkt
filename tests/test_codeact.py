@@ -321,3 +321,14 @@ class TestCodeActAgent:
         )
         current_date = datetime.now().strftime("%Y-%m-%d")
         assert current_date in str(result), result
+
+    async def test_codeact_grok_code(self, grok_code: LLM) -> None:
+        agent_name = "agent"
+        agent = CodeActAgent(
+            name=agent_name,
+            description="Just agent",
+            llm=grok_code,
+        )
+        result = await run_query("What is 432412421249 * 4332144219?", agent, {})
+        str_result = str(result).replace(",", "").replace(".", "").replace(" ", "")
+        assert "1873272970937648109531" in str_result, str_result

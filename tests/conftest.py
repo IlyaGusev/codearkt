@@ -41,6 +41,11 @@ def deepseek_small_context() -> LLM:
 
 
 @pytest.fixture
+def grok_code() -> LLM:
+    return LLM(model_name="x-ai/grok-code-fast-1")
+
+
+@pytest.fixture
 def gpt_5_mini() -> LLM:
     return LLM(model_name="gpt-5-mini", tool_choice="auto")
 
