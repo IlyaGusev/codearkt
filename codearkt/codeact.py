@@ -215,14 +215,15 @@ class CodeActAgent:
                     session_id=session_id,
                 )
 
-        except Exception as e:
+        except Exception as exc:
+            error = traceback.format_exc()
             self._log(
-                f"Agent {self.name} failed with error: {e}",
+                f"Agent {self.name} failed with error: {error}",
                 run_id=run_id,
                 session_id=session_id,
                 level=logging.ERROR,
             )
-            raise e
+            raise exc
         finally:
             # Cleanup
             if python_executor:
