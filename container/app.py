@@ -6,6 +6,7 @@ import ast
 import linecache
 from typing import Dict, Any, Optional, List, Callable
 from functools import partial
+from collections import defaultdict
 import multiprocessing
 import time
 import logging
@@ -19,6 +20,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 app = FastAPI(title="CodeArkt code runtime")
 WORKERS: Dict[str, "Worker"] = {}
+INTERPRETER_LOCKS: Dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
 
 @app.middleware("http")  # type: ignore
@@ -223,19 +225,18 @@ def _get_worker(interpreter_id: str) -> Worker:
 @app.post("/exec")  # type: ignore
 async def exec_code(payload: Payload) -> ExecResult:
     interpreter_id = payload.interpreter_id or "default"
-    worker = _get_worker(interpreter_id)
-
-    loop = asyncio.get_event_loop()
-    result_dict: Dict[str, Any] = await loop.run_in_executor(
-        None,
-        worker.exec,
-        payload.code,
-        payload.tool_server_port,
-        payload.tool_names,
-        payload.session_id,
-    )
-    result: ExecResult = ExecResult.model_validate(result_dict)
-    return result
+    lock = INTERPRETER_LOCKS[interpreter_id]
+    async with lock:
+        worker = _get_worker(interpreter_id)
+        result_dict = await asyncio.to_thread(
+            worker.exec,
+            payload.code,
+            payload.tool_server_port,
+            payload.tool_names,
+            payload.session_id,
+        )
+        result: ExecResult = ExecResult.model_validate(result_dict)
+        return result
 
 
 @app.post("/cleanup")  # type: ignore

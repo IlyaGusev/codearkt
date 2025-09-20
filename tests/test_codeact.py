@@ -3,6 +3,7 @@ from textwrap import dedent
 from datetime import datetime
 
 from academia_mcp.tools import arxiv_search
+from academia_mcp.tools import arxiv_download
 
 from codearkt.codeact import CodeActAgent, extract_code_from_text
 from codearkt.llm import ChatMessage, LLM
@@ -283,16 +284,34 @@ class TestCodeActAgent:
             tool_names=["arxiv_search"],
         )
         results = await run_batch(
-            ["What is 432412421249 * 4332144219?", "Get the exact title of 2409.06820v4."],
+            ["What is 432412421249 * 4332144219?", "Get the exact title of 2409.06820v4."] * 2,
             agent,
-            {},
             additional_tools={"arxiv_search": arxiv_search},
+            max_concurrency=4,
         )
-        assert len(results) == 2, results
+        assert len(results) == 4, results
         result1 = str(results[0]).replace(",", "").replace(".", "").replace(" ", "")
         assert "1873272970937648109531" in result1, result1
         result2 = str(results[1]).lower()
         assert "role-playing language models" in result2, result2
+
+    async def test_codeact_multi_agent_batch(self, deepseek: LLM) -> None:
+        agent = CodeActAgent(
+            name="agent",
+            description="Just agent",
+            llm=deepseek,
+            managed_agents=[get_nested_agent()],
+        )
+        queries = ["Get the exact title of 2409.06820v4."] * 5
+        results = await run_batch(
+            queries,
+            agent,
+            max_concurrency=5,
+            additional_tools={"arxiv_search": arxiv_search, "arxiv_download": arxiv_download},
+        )
+        assert len(results) == 5, results
+        for result in results:
+            assert "role-playing language models" in str(result).lower(), result
 
     async def test_codeact_tool_description_dedent(
         self, deepseek: LLM, mcp_server_test: MCPServerTest

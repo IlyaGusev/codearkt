@@ -21,15 +21,15 @@ from codearkt.tools import fetch_tools
 from codearkt.util import get_unique_id, truncate_content, is_correct_json
 
 
-SHA_DIGEST: str = "sha256:54b14fca72705bf30ea9051806748ff226ed9f59eeb032f54fb15fc3b7e5332c"
+SHA_DIGEST: str = "sha256:c0b59a80d38387f1f2807146a50e4163920c2837f3b4dc6e90441309ed976588"
 DEFAULT_IMAGE: str = f"phoenix120/codearkt_http@{SHA_DIGEST}"
 IMAGE: str = os.getenv("CODEARKT_EXECUTOR_IMAGE", DEFAULT_IMAGE)
-MEM_LIMIT: str = "512m"
+MEM_LIMIT: str = "1g"
 CPU_QUOTA: int = 50000
 CPU_PERIOD: int = 100000
 EXEC_TIMEOUT: int = 24 * 60 * 60  # 24 hours
 CLEANUP_TIMEOUT: int = 10
-PIDS_LIMIT: int = 64
+PIDS_LIMIT: int = 256
 NET_NAME: str = "codearkt_sandbox_net"
 EXTERNAL_URL_ENV = os.getenv("CODEARKT_EXECUTOR_URL")
 
