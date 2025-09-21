@@ -307,11 +307,31 @@ class TestCodeActAgent:
             queries,
             agent,
             max_concurrency=5,
+            task_timeout=600,
             additional_tools={"arxiv_search": arxiv_search, "arxiv_download": arxiv_download},
         )
         assert len(results) == 5, results
         for result in results:
             assert "role-playing language models" in str(result).lower(), result
+
+    async def test_codeact_multi_agent_timeout_batch(self, deepseek: LLM) -> None:
+        agent = CodeActAgent(
+            name="agent",
+            description="Just agent",
+            llm=deepseek,
+            managed_agents=[get_nested_agent()],
+        )
+        queries = ["Get the exact title of 2409.06820v4."] * 5
+        results = await run_batch(
+            queries,
+            agent,
+            max_concurrency=2,
+            task_timeout=1,
+            additional_tools={"arxiv_search": arxiv_search, "arxiv_download": arxiv_download},
+        )
+        assert len(results) == 5, results
+        for result in results:
+            assert "timeout" in str(result).lower(), result
 
     async def test_codeact_tool_description_dedent(
         self, deepseek: LLM, mcp_server_test: MCPServerTest

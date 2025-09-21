@@ -321,6 +321,7 @@ async def run_batch(
     agent: CodeActAgent,
     mcp_config: Optional[Dict[str, Any]] = None,
     max_concurrency: int = 5,
+    task_timeout: Optional[int] = None,
     additional_tools: Optional[Dict[str, Callable[..., Any]]] = None,
     add_mcp_server_prefixes: bool = True,
 ) -> List[str]:
@@ -338,12 +339,24 @@ async def run_batch(
 
     async def _run_single(q: str) -> str:
         async with semaphore:
-            return await agent.ainvoke(
-                [ChatMessage(role="user", content=q)],
-                session_id=get_unique_id(),
-                server_host=host,
-                server_port=port,
+            session_id = get_unique_id()
+            task = asyncio.create_task(
+                agent.ainvoke(
+                    [ChatMessage(role="user", content=q)],
+                    session_id=session_id,
+                    server_host=host,
+                    server_port=port,
+                )
             )
+            try:
+                if task_timeout and task_timeout > 0:
+                    return await asyncio.wait_for(task, timeout=task_timeout)
+                return await task
+            except asyncio.TimeoutError:
+                task.cancel()
+                return f"Timeout after {task_timeout}"
+            except Exception as e:
+                return f"Error: {e}"
 
     try:
         tasks = [_run_single(q) for q in queries]
