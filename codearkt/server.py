@@ -10,7 +10,7 @@ from fastmcp.client.transports import (
     StreamableHttpTransport,
     ClientTransport,
 )
-from fastmcp.utilities.mcp_config import (
+from fastmcp.mcp_config import (
     MCPConfig,
     RemoteMCPServer,
     StdioMCPServer,

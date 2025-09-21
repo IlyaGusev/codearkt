@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "codearkt"
-version = "1.7.6"
+version = "1.7.7"
 description = "CodeAct implementation with Docker and MCP"
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -21,7 +21,7 @@ dependencies = [
     "academia-mcp>=1.4.0",
     "arize-phoenix-otel>=0.12.1",
     "docker>=7.1.0",
-    "fastmcp==2.10.2",
+    "fastmcp==2.11.3",
     "httpx>=0.27.0",
     "jinja2>=3.1.6",
     "openai>=1.93.0",
