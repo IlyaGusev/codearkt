@@ -197,7 +197,7 @@ def get_mcp_app(
         for name, tool in additional_tools.items():
             mcp.tool(tool, name=name)
 
-    return mcp.streamable_http_app()
+    return mcp.http_app()
 
 
 def get_main_app(
