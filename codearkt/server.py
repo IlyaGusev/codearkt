@@ -5,7 +5,6 @@ from typing import Dict, Any, Optional, List, Callable, AsyncGenerator
 
 import uvicorn
 from fastmcp import FastMCP, settings as fastmcp_settings
-from fastmcp.client.client import Client
 from fastmcp.client.transports import (
     SSETransport,
     StreamableHttpTransport,
@@ -188,8 +187,7 @@ def get_mcp_app(
                 transport = server.to_transport()
 
             assert transport is not None, "Transport is required for the MCP server in the config"
-            client: Client[ClientTransport] = Client(transport=transport)
-            sub_proxy = FastMCP.as_proxy(client)
+            sub_proxy = FastMCP.as_proxy(backend=transport)
             prefix: Optional[str] = None if server_count == 1 else name
             if not add_prefixes:
                 prefix = None
