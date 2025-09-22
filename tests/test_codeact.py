@@ -1,4 +1,6 @@
 import asyncio
+import tempfile
+from pathlib import Path
 from textwrap import dedent
 from datetime import datetime
 
@@ -283,12 +285,18 @@ class TestCodeActAgent:
             llm=deepseek,
             tool_names=["arxiv_search"],
         )
-        results = await run_batch(
-            ["What is 432412421249 * 4332144219?", "Get the exact title of 2409.06820v4."] * 2,
-            agent,
-            additional_tools={"arxiv_search": arxiv_search},
-            max_concurrency=4,
-        )
+        with tempfile.NamedTemporaryFile(mode="w") as f:
+            results = await run_batch(
+                ["What is 432412421249 * 4332144219?", "Get the exact title of 2409.06820v4."] * 2,
+                agent,
+                additional_tools={"arxiv_search": arxiv_search},
+                max_concurrency=4,
+                output_path=Path(f.name),
+            )
+            text = Path(f.name).read_text()
+            assert text is not None, text
+            assert len(text) > 0, text
+            assert len(text.strip().splitlines()) == 4, text
         assert len(results) == 4, results
         result1 = str(results[0]).replace(",", "").replace(".", "").replace(" ", "")
         assert "1873272970937648109531" in result1, result1

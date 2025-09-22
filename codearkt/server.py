@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Optional, List, Callable, AsyncGenerator
 
@@ -24,7 +25,7 @@ from sse_starlette.sse import AppStatus
 from codearkt.codeact import CodeActAgent
 from codearkt.llm import ChatMessage
 from codearkt.event_bus import AgentEventBus
-from codearkt.util import get_unique_id, find_free_port
+from codearkt.util import get_unique_id, find_free_port, append_jsonl_atomic
 
 DEFAULT_SERVER_HOST = "0.0.0.0"
 DEFAULT_SERVER_PORT = 5055
@@ -324,6 +325,7 @@ async def run_batch(
     task_timeout: Optional[int] = None,
     additional_tools: Optional[Dict[str, Callable[..., Any]]] = None,
     add_mcp_server_prefixes: bool = True,
+    output_path: Optional[Path] = None,
 ) -> List[str]:
     if not queries:
         return []
@@ -348,15 +350,25 @@ async def run_batch(
                     server_port=port,
                 )
             )
+            result: str
             try:
                 if task_timeout and task_timeout > 0:
-                    return await asyncio.wait_for(task, timeout=task_timeout)
-                return await task
+                    result = await asyncio.wait_for(task, timeout=task_timeout)
+                else:
+                    result = await task
             except asyncio.TimeoutError:
                 task.cancel()
-                return f"Timeout after {task_timeout}"
+                try:
+                    await asyncio.wait_for(task, timeout=2)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    pass
+                result = f"Timeout after {task_timeout}"
             except Exception as e:
-                return f"Error: {e}"
+                result = f"Error: {e}"
+            finally:
+                if output_path:
+                    append_jsonl_atomic(output_path, {"query": q, "result": result})
+                return result
 
     try:
         tasks = [_run_single(q) for q in queries]

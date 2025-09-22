@@ -2,7 +2,10 @@ import uuid
 import json
 import socket
 import random
-from typing import Optional
+import shutil
+from contextlib import suppress
+from typing import Optional, Dict, Any, List
+from pathlib import Path
 
 MAX_LENGTH_TRUNCATE_CONTENT: int = 20000
 
@@ -79,3 +82,38 @@ def is_correct_json(content: str) -> bool:
         return True
     except json.JSONDecodeError:
         return False
+
+
+def append_jsonl_atomic(output_path: Path, record: Dict[str, Any]) -> None:
+    directory = output_path.parent
+    directory.mkdir(parents=True, exist_ok=True)
+
+    lock_path = output_path.with_suffix(output_path.suffix + ".lock")
+    with open(lock_path, "w", encoding="utf-8") as lock_file:
+        # Best-effort file lock (Linux). Safe to no-op if fcntl not available
+        with suppress(Exception):
+            import fcntl
+
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+
+        existing: List[Dict[str, Any]] = []
+        if output_path.exists():
+            try:
+                with open(output_path, "r", encoding="utf-8") as f:
+                    existing = [json.loads(line) for line in f]
+            except Exception:
+                existing = []
+
+        existing.append(record)
+
+        tmp_path = output_path.with_suffix(output_path.suffix + ".tmp")
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            for record in existing:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+        shutil.move(tmp_path, output_path)
+
+        with suppress(Exception):
+            import fcntl
+
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)

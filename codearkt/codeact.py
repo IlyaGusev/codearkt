@@ -1,4 +1,5 @@
 import re
+import asyncio
 import copy
 import logging
 import traceback
@@ -286,6 +287,8 @@ class CodeActAgent:
                     break
             await self._publish_event(event_bus, session_id, EventType.OUTPUT, "\n")
 
+        except asyncio.CancelledError:
+            raise
         except Exception:
             exception = traceback.format_exc()
             error_text = f"LLM failed with error: {exception}. Please try again."
@@ -359,11 +362,19 @@ class CodeActAgent:
             tool_output: str = str(code_result_message.content[0]["text"]) + "\n"
             await self._publish_event(event_bus, session_id, EventType.TOOL_RESPONSE, tool_output)
             self._log("Code was executed!", run_id=run_id, session_id=session_id)
-        except Exception as e:
-            new_messages.append(ChatMessage(role="user", content=f"Error: {e}"))
-            self._log(f"Code error: {e}", run_id=run_id, session_id=session_id, level=logging.DEBUG)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            exception = traceback.format_exc()
+            new_messages.append(ChatMessage(role="user", content=f"Error: {exception}"))
+            self._log(
+                f"Code error: {exception}",
+                run_id=run_id,
+                session_id=session_id,
+                level=logging.DEBUG,
+            )
             await self._publish_event(
-                event_bus, session_id, EventType.TOOL_RESPONSE, f"Error: {e}\n"
+                event_bus, session_id, EventType.TOOL_RESPONSE, f"Error: {exception}\n"
             )
         return new_messages
 
@@ -497,6 +508,8 @@ class CodeActAgent:
                 ChatMessage(role="user", content=plan_suffix),
             ]
 
+        except asyncio.CancelledError:
+            raise
         except Exception:
             exception = traceback.format_exc()
             error_text = f"LLM failed with error: {exception}. Please try again."
