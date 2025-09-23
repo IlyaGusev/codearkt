@@ -21,6 +21,7 @@ from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sse_starlette.sse import AppStatus
+import contextlib
 
 from codearkt.codeact import CodeActAgent
 from codearkt.llm import ChatMessage
@@ -221,6 +222,32 @@ def get_main_app(
     return mcp_app
 
 
+async def _shutdown_server(
+    server: uvicorn.Server,
+    server_task: asyncio.Task[None],
+    timeout: float = 10.0,
+) -> None:
+    AppStatus.should_exit = True
+    server.should_exit = True
+
+    try:
+        await asyncio.wait_for(server_task, timeout=timeout / 2.0)
+        return
+    except asyncio.TimeoutError:
+        pass
+
+    server.force_exit = True
+    try:
+        await asyncio.wait_for(server_task, timeout=timeout / 2.0)
+        return
+    except asyncio.TimeoutError:
+        pass
+
+    with contextlib.suppress(asyncio.CancelledError):
+        server_task.cancel()
+        await server_task
+
+
 def run_server(
     agent: CodeActAgent,
     mcp_config: Dict[str, Any],
@@ -311,8 +338,7 @@ async def run_query(
             server_port=port,
         )
     finally:
-        server.should_exit = True
-        await server_task
+        await _shutdown_server(server, server_task)
 
     return result
 
@@ -329,6 +355,10 @@ async def run_batch(
 ) -> List[str]:
     if not queries:
         return []
+
+    if output_path:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text("")
 
     server, server_task, host, port = await _start_temporary_server(
         agent,
@@ -374,7 +404,6 @@ async def run_batch(
         tasks = [_run_single(q) for q in queries]
         results: List[str] = await asyncio.gather(*tasks)
     finally:
-        server.should_exit = True
-        await server_task
+        await _shutdown_server(server, server_task)
 
     return results
