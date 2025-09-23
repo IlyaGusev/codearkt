@@ -397,7 +397,16 @@ async def run_batch(
                 result = f"Error: {e}"
             finally:
                 if output_path:
-                    append_jsonl_atomic(output_path, {"query": q, "result": result})
+                    token_usage = agent.get_token_usage(session_id).model_dump()
+                    append_jsonl_atomic(
+                        output_path,
+                        {
+                            "query": q,
+                            "result": result,
+                            "session_id": session_id,
+                            "token_usage": token_usage,
+                        },
+                    )
                 return result
 
     try:

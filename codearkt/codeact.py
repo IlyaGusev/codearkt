@@ -19,6 +19,8 @@ from codearkt.tools import fetch_tools
 from codearkt.event_bus import AgentEventBus, EventType
 from codearkt.llm import LLM, ChatMessages, ChatMessage
 from codearkt.util import get_unique_id, truncate_content
+from codearkt.metrics import TokenUsageStore, TokenUsage
+
 
 DEFAULT_END_CODE_SEQUENCE = "<end_code>"
 DEFAULT_END_PLAN_SEQUENCE = "<end_plan>"
@@ -97,6 +99,7 @@ class CodeActAgent:
         self.verbosity_level = verbosity_level
         self.planning_interval = planning_interval
         self.managed_agents: Optional[List[Self]] = managed_agents
+        self.token_usage_store: TokenUsageStore = TokenUsageStore()
 
         if self.managed_agents:
             for agent in self.managed_agents:
@@ -115,6 +118,9 @@ class CodeActAgent:
                 agents.extend(agent.get_all_agents())
         named_agents = {agent.name: agent for agent in agents}
         return list(named_agents.values())
+
+    def get_token_usage(self, session_id: str) -> TokenUsage:
+        return self.token_usage_store.get(session_id)
 
     async def ainvoke(
         self,
@@ -273,7 +279,10 @@ class CodeActAgent:
         output_text = ""
         try:
             output_stream = self.llm.astream(messages, stop=self.prompts.stop_sequences)
+            last_usage = None
             async for event in output_stream:
+                if event.usage:
+                    last_usage = event.usage
                 delta = event.choices[0].delta
                 if isinstance(delta.content, str):
                     chunk = delta.content
@@ -286,7 +295,10 @@ class CodeActAgent:
                 ):
                     break
             await self._publish_event(event_bus, session_id, EventType.OUTPUT, "\n")
-
+            if last_usage:
+                await self.token_usage_store.add(
+                    session_id, last_usage.prompt_tokens, last_usage.completion_tokens
+                )
         except asyncio.CancelledError:
             raise
         except Exception:
