@@ -1,4 +1,5 @@
 import asyncio
+import time
 import logging
 from pathlib import Path
 from datetime import datetime
@@ -371,6 +372,7 @@ async def run_batch(
 
     async def _run_single(q: str) -> str:
         async with semaphore:
+            start_time = time.time()
             session_id = get_unique_id()
             task = asyncio.create_task(
                 agent.ainvoke(
@@ -396,6 +398,8 @@ async def run_batch(
             except Exception as e:
                 result = f"Error: {e}"
             finally:
+                end_time = time.time()
+                duration = int(end_time - start_time)
                 if output_path:
                     token_usage = agent.get_token_usage(session_id).model_dump()
                     append_jsonl_atomic(
@@ -405,6 +409,7 @@ async def run_batch(
                             "result": result,
                             "session_id": session_id,
                             "token_usage": token_usage,
+                            "duration": duration,
                         },
                     )
                 return result
