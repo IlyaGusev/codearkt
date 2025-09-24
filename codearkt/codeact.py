@@ -17,7 +17,7 @@ from jinja2 import Template
 from codearkt.python_executor import PythonExecutor
 from codearkt.tools import fetch_tools
 from codearkt.event_bus import AgentEventBus, EventType
-from codearkt.llm import LLM, ChatMessages, ChatMessage
+from codearkt.llm import LLM, ChatMessages, ChatMessage, ChatStreamGenerator
 from codearkt.util import get_unique_id, truncate_content
 from codearkt.metrics import TokenUsageStore, TokenUsage
 
@@ -262,6 +262,35 @@ class CodeActAgent:
             ), f"Tool {tool_name} not found in {fetched_tool_names}"
         return tools
 
+    async def _process_llm_stream(
+        self,
+        output_stream: ChatStreamGenerator,
+        session_id: str,
+        stop: List[str],
+        event_bus: AgentEventBus | None = None,
+        event_type: EventType = EventType.OUTPUT,
+    ) -> str:
+        output_text = ""
+        last_usage = None
+        async for event in output_stream:
+            if event.usage:
+                last_usage = event.usage
+            delta = event.choices[0].delta
+            if isinstance(delta.content, str):
+                chunk = delta.content
+            elif isinstance(delta.content, list):
+                chunk = "\n".join([str(item) for item in delta.content])
+            output_text += chunk
+            await self._publish_event(event_bus, session_id, event_type, chunk)
+            if any(ss in output_text for ss in stop):
+                break
+        await self._publish_event(event_bus, session_id, event_type, "\n")
+        if last_usage:
+            await self.token_usage_store.add(
+                session_id, last_usage.prompt_tokens, last_usage.completion_tokens
+            )
+        return output_text
+
     async def _step(
         self,
         messages: ChatMessages,
@@ -278,27 +307,13 @@ class CodeActAgent:
         self._log("LLM generates outputs...", run_id=run_id, session_id=session_id)
         output_text = ""
         try:
-            output_stream = self.llm.astream(messages, stop=self.prompts.stop_sequences)
-            last_usage = None
-            async for event in output_stream:
-                if event.usage:
-                    last_usage = event.usage
-                delta = event.choices[0].delta
-                if isinstance(delta.content, str):
-                    chunk = delta.content
-                elif isinstance(delta.content, list):
-                    chunk = "\n".join([str(item) for item in delta.content])
-                output_text += chunk
-                await self._publish_event(event_bus, session_id, EventType.OUTPUT, chunk)
-                if any(
-                    stop_sequence in output_text for stop_sequence in self.prompts.stop_sequences
-                ):
-                    break
-            await self._publish_event(event_bus, session_id, EventType.OUTPUT, "\n")
-            if last_usage:
-                await self.token_usage_store.add(
-                    session_id, last_usage.prompt_tokens, last_usage.completion_tokens
-                )
+            output_stream = self.llm.astream(messages=messages, stop=self.prompts.stop_sequences)
+            output_text = await self._process_llm_stream(
+                output_stream=output_stream,
+                session_id=session_id,
+                stop=self.prompts.stop_sequences,
+                event_bus=event_bus,
+            )
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -413,17 +428,13 @@ class CodeActAgent:
             level=logging.DEBUG,
         )
 
-        output_stream = self.llm.astream(input_messages, stop=self.prompts.stop_sequences)
-        output_text = ""
-        async for event in output_stream:
-            delta = event.choices[0].delta
-            if isinstance(delta.content, str):
-                chunk = delta.content
-            elif isinstance(delta.content, list):
-                chunk = "\n".join([str(item) for item in delta.content])
-            output_text += chunk
-            await self._publish_event(event_bus, session_id, EventType.OUTPUT, chunk)
-
+        output_stream = self.llm.astream(messages=input_messages, stop=self.prompts.stop_sequences)
+        output_text = await self._process_llm_stream(
+            output_stream=output_stream,
+            session_id=session_id,
+            stop=self.prompts.stop_sequences,
+            event_bus=event_bus,
+        )
         self._log(
             f"Final message: {final_message}",
             run_id=run_id,
@@ -499,16 +510,13 @@ class CodeActAgent:
             await self._publish_event(event_bus, session_id, EventType.PLANNING_OUTPUT, plan_prefix)
             output_text = plan_prefix
 
-            async for event in output_stream:
-                delta = event.choices[0].delta
-                chunk = delta.content
-                if chunk is None:
-                    continue
-                assert isinstance(chunk, str), event
-                output_text += chunk
-                await self._publish_event(event_bus, session_id, EventType.PLANNING_OUTPUT, chunk)
-                if self.prompts.end_plan_sequence in output_text:
-                    break
+            output_text += await self._process_llm_stream(
+                output_stream=output_stream,
+                session_id=session_id,
+                stop=[self.prompts.end_plan_sequence],
+                event_bus=event_bus,
+                event_type=EventType.PLANNING_OUTPUT,
+            )
 
             if self.prompts.end_plan_sequence in output_text:
                 output_text = output_text.split(self.prompts.end_plan_sequence)[0].strip()

@@ -45,6 +45,7 @@ class ChatMessage(BaseModel):  # type: ignore
 
 
 ChatMessages = List[ChatMessage]
+ChatStreamGenerator = AsyncGenerator[ChatCompletionChunk, None]
 
 
 def count_openai_tokens(messages: ChatMessages) -> int:
@@ -90,9 +91,7 @@ class LLM:
             messages = first_messages + messages
         return messages
 
-    async def astream(
-        self, messages: ChatMessages, **kwargs: Any
-    ) -> AsyncGenerator[ChatCompletionChunk, None]:
+    async def astream(self, messages: ChatMessages, **kwargs: Any) -> ChatStreamGenerator:
         messages = copy.deepcopy(messages)
         api_params = {**self._params, **kwargs}
 
