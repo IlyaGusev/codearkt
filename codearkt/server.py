@@ -27,6 +27,7 @@ import contextlib
 from codearkt.codeact import CodeActAgent
 from codearkt.llm import ChatMessage
 from codearkt.event_bus import AgentEventBus
+from codearkt.metrics import TokenUsageStore
 from codearkt.util import get_unique_id, find_free_port, append_jsonl_atomic
 
 DEFAULT_SERVER_HOST = "0.0.0.0"
@@ -79,6 +80,7 @@ def create_agent_endpoint(
     server_host: str,
     server_port: int,
     event_bus: AgentEventBus,
+    token_usage_store: TokenUsageStore | None = None,
 ) -> Callable[..., Any]:
     @agent_app.post(f"/{agent_instance.name}")  # type: ignore
     async def agent_tool(request: AgentRequest) -> Any:
@@ -90,6 +92,7 @@ def create_agent_endpoint(
                     messages=request.messages,
                     session_id=session_id,
                     event_bus=event_bus,
+                    token_usage_store=token_usage_store,
                     server_host=server_host,
                     server_port=server_port,
                 )
@@ -129,6 +132,7 @@ def get_agent_app(
     server_host: str,
     server_port: int,
     event_bus: AgentEventBus,
+    token_usage_store: TokenUsageStore | None = None,
 ) -> FastAPI:
     agent_app = FastAPI(
         title="CodeArkt Agent App", description="Agent app for CodeArkt", version="1.0.0"
@@ -143,6 +147,7 @@ def get_agent_app(
             server_host=server_host,
             server_port=server_port,
             event_bus=event_bus,
+            token_usage_store=token_usage_store,
         )
 
     async def cancel_session(request: CancelRequest) -> Dict[str, str]:
@@ -206,6 +211,7 @@ def get_mcp_app(
 def get_main_app(
     agent: CodeActAgent,
     event_bus: AgentEventBus,
+    token_usage_store: Optional[TokenUsageStore] = None,
     mcp_config: Optional[Dict[str, Any]] = None,
     server_host: str = DEFAULT_SERVER_HOST,
     server_port: int = DEFAULT_SERVER_PORT,
@@ -217,6 +223,7 @@ def get_main_app(
         server_host=server_host,
         server_port=server_port,
         event_bus=event_bus,
+        token_usage_store=token_usage_store,
     )
     mcp_app = get_mcp_app(mcp_config, additional_tools, add_prefixes=add_mcp_server_prefixes)
     mcp_app.mount("/agents", agent_app)
@@ -282,8 +289,9 @@ async def _start_temporary_server(
     mcp_config: Optional[Dict[str, Any]] = None,
     additional_tools: Optional[Dict[str, Callable[..., Any]]] = None,
     add_mcp_server_prefixes: bool = True,
-) -> tuple[uvicorn.Server, asyncio.Task[None], str, int]:
+) -> tuple[uvicorn.Server, asyncio.Task[None], str, int, TokenUsageStore]:
     event_bus = AgentEventBus()
+    token_usage_store = TokenUsageStore()
     host = DEFAULT_SERVER_HOST
     port = find_free_port()
     assert port is not None, "No free port found for temporary server"
@@ -297,6 +305,7 @@ async def _start_temporary_server(
         server_port=port,
         additional_tools=additional_tools,
         event_bus=event_bus,
+        token_usage_store=token_usage_store,
         add_mcp_server_prefixes=add_mcp_server_prefixes,
     )
 
@@ -314,7 +323,7 @@ async def _start_temporary_server(
 
     await asyncio.wait_for(_wait_until_started(server), timeout=30)
 
-    return server, server_task, host, port
+    return server, server_task, host, port, token_usage_store
 
 
 async def run_query(
@@ -324,7 +333,7 @@ async def run_query(
     additional_tools: Optional[Dict[str, Callable[..., Any]]] = None,
     add_mcp_server_prefixes: bool = True,
 ) -> str:
-    server, server_task, host, port = await _start_temporary_server(
+    server, server_task, host, port, _ = await _start_temporary_server(
         agent,
         mcp_config=mcp_config,
         additional_tools=additional_tools,
@@ -361,7 +370,7 @@ async def run_batch(
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text("")
 
-    server, server_task, host, port = await _start_temporary_server(
+    server, server_task, host, port, token_usage_store = await _start_temporary_server(
         agent,
         mcp_config=mcp_config,
         additional_tools=additional_tools,
@@ -380,6 +389,7 @@ async def run_batch(
                     session_id=session_id,
                     server_host=host,
                     server_port=port,
+                    token_usage_store=token_usage_store,
                 )
             )
             result: str
@@ -401,7 +411,7 @@ async def run_batch(
                 end_time = time.time()
                 duration = int(end_time - start_time)
                 if output_path:
-                    token_usage = agent.get_token_usage(session_id).model_dump()
+                    token_usage = token_usage_store.get(session_id).model_dump()
                     append_jsonl_atomic(
                         output_path,
                         {

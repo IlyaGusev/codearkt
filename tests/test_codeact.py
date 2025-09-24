@@ -12,6 +12,7 @@ from codearkt.llm import ChatMessage, LLM
 from codearkt.event_bus import AgentEventBus, EventType
 from codearkt.util import get_unique_id
 from codearkt.server import run_query, run_batch
+from codearkt.metrics import TokenUsageStore
 
 from tests.conftest import MCPServerTest, get_nested_agent
 
@@ -86,11 +87,13 @@ class TestCodeActAgent:
             tool_names=[],
         )
         session_id = get_unique_id()
+        token_usage_store = TokenUsageStore()
         await agent.ainvoke(
             [ChatMessage(role="user", content="What is 432412421249 * 4332144219?")],
             session_id=session_id,
+            token_usage_store=token_usage_store,
         )
-        token_usage = agent.get_token_usage(session_id)
+        token_usage = token_usage_store.get(session_id)
         assert token_usage.prompt_tokens > 0, token_usage
         assert token_usage.completion_tokens > 0, token_usage
 

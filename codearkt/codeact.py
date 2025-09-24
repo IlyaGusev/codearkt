@@ -19,7 +19,7 @@ from codearkt.tools import fetch_tools
 from codearkt.event_bus import AgentEventBus, EventType
 from codearkt.llm import LLM, ChatMessages, ChatMessage, ChatStreamGenerator
 from codearkt.util import get_unique_id, truncate_content
-from codearkt.metrics import TokenUsageStore, TokenUsage
+from codearkt.metrics import TokenUsageStore
 
 
 DEFAULT_END_CODE_SEQUENCE = "<end_code>"
@@ -119,16 +119,14 @@ class CodeActAgent:
         named_agents = {agent.name: agent for agent in agents}
         return list(named_agents.values())
 
-    def get_token_usage(self, session_id: str) -> TokenUsage:
-        return self.token_usage_store.get(session_id)
-
     async def ainvoke(
         self,
         messages: ChatMessages,
         session_id: str,
         event_bus: AgentEventBus | None = None,
-        server_host: Optional[str] = None,
-        server_port: Optional[int] = None,
+        token_usage_store: TokenUsageStore | None = None,
+        server_host: str | None = None,
+        server_port: int | None = None,
     ) -> str:
         messages = copy.deepcopy(messages)
 
@@ -180,6 +178,7 @@ class CodeActAgent:
                         run_id=run_id,
                         session_id=session_id,
                         event_bus=event_bus,
+                        token_usage_store=token_usage_store,
                     )
                     messages.extend(new_messages)
                     self._log(
@@ -200,6 +199,7 @@ class CodeActAgent:
                     session_id=session_id,
                     run_id=run_id,
                     event_bus=event_bus,
+                    token_usage_store=token_usage_store,
                     step_number=step_number,
                 )
                 messages.extend(new_messages)
@@ -213,7 +213,11 @@ class CodeActAgent:
             else:
                 # Final step
                 new_messages = await self._handle_final_message(
-                    messages, session_id=session_id, run_id=run_id, event_bus=event_bus
+                    messages,
+                    session_id=session_id,
+                    run_id=run_id,
+                    event_bus=event_bus,
+                    token_usage_store=token_usage_store,
                 )
                 messages.extend(new_messages)
                 self._log(
@@ -268,6 +272,7 @@ class CodeActAgent:
         session_id: str,
         stop: List[str],
         event_bus: AgentEventBus | None = None,
+        token_usage_store: TokenUsageStore | None = None,
         event_type: EventType = EventType.OUTPUT,
     ) -> str:
         output_text = ""
@@ -285,8 +290,8 @@ class CodeActAgent:
             if any(ss in output_text for ss in stop):
                 break
         await self._publish_event(event_bus, session_id, event_type, "\n")
-        if last_usage:
-            await self.token_usage_store.add(
+        if last_usage and token_usage_store:
+            await token_usage_store.add(
                 session_id, last_usage.prompt_tokens, last_usage.completion_tokens
             )
         return output_text
@@ -298,6 +303,7 @@ class CodeActAgent:
         session_id: str,
         run_id: str,
         event_bus: AgentEventBus | None = None,
+        token_usage_store: TokenUsageStore | None = None,
         step_number: int | None = None,
     ) -> ChatMessages:
         _ = step_number  # for logs only
@@ -313,6 +319,7 @@ class CodeActAgent:
                 session_id=session_id,
                 stop=self.prompts.stop_sequences,
                 event_bus=event_bus,
+                token_usage_store=token_usage_store,
             )
         except asyncio.CancelledError:
             raise
@@ -417,6 +424,7 @@ class CodeActAgent:
         session_id: str,
         run_id: str,
         event_bus: AgentEventBus | None = None,
+        token_usage_store: TokenUsageStore | None = None,
     ) -> ChatMessages:
         prompt: str = self.prompts.final.render()
         final_message = ChatMessage(role="user", content=prompt)
@@ -434,6 +442,7 @@ class CodeActAgent:
             session_id=session_id,
             stop=self.prompts.stop_sequences,
             event_bus=event_bus,
+            token_usage_store=token_usage_store,
         )
         self._log(
             f"Final message: {final_message}",
@@ -486,6 +495,7 @@ class CodeActAgent:
         run_id: str,
         session_id: str,
         event_bus: AgentEventBus | None = None,
+        token_usage_store: TokenUsageStore | None = None,
     ) -> ChatMessages:
         messages = copy.deepcopy(messages)
         assert self.prompts.plan is not None, "Planning prompt is not set, but planning is enabled"
@@ -515,6 +525,7 @@ class CodeActAgent:
                 session_id=session_id,
                 stop=[self.prompts.end_plan_sequence],
                 event_bus=event_bus,
+                token_usage_store=token_usage_store,
                 event_type=EventType.PLANNING_OUTPUT,
             )
 
