@@ -241,14 +241,14 @@ async def _shutdown_server(
     try:
         await asyncio.wait_for(server_task, timeout=timeout / 2.0)
         return
-    except asyncio.TimeoutError:
+    except (asyncio.CancelledError, asyncio.TimeoutError):
         pass
 
     server.force_exit = True
     try:
         await asyncio.wait_for(server_task, timeout=timeout / 2.0)
         return
-    except asyncio.TimeoutError:
+    except (asyncio.CancelledError, asyncio.TimeoutError):
         pass
 
     with contextlib.suppress(asyncio.CancelledError):
