@@ -18,7 +18,7 @@ from jinja2 import Template
 from codearkt.python_executor import PythonExecutor
 from codearkt.tools import fetch_tools
 from codearkt.event_bus import AgentEventBus, EventType
-from codearkt.llm import LLM, ChatMessages, ChatMessage, ChatStreamGenerator
+from codearkt.llm import LLM, ChatMessages, ChatMessage
 from codearkt.util import get_unique_id, truncate_content
 from codearkt.metrics import TokenUsageStore
 
@@ -267,15 +267,17 @@ class CodeActAgent:
             ), f"Tool {tool_name} not found in {fetched_tool_names}"
         return tools
 
-    async def _process_llm_stream(
+    async def _run_llm(
         self,
-        output_stream: ChatStreamGenerator,
+        messages: ChatMessages,
         session_id: str,
         stop: List[str],
         event_bus: AgentEventBus | None = None,
         token_usage_store: TokenUsageStore | None = None,
         event_type: EventType = EventType.OUTPUT,
     ) -> str:
+        output_stream = self.llm.astream(messages=messages, stop=stop)
+
         output_text = ""
         last_usage = None
         try:
@@ -318,9 +320,8 @@ class CodeActAgent:
         self._log("LLM generates outputs...", run_id=run_id, session_id=session_id)
         output_text = ""
         try:
-            output_stream = self.llm.astream(messages=messages, stop=self.prompts.stop_sequences)
-            output_text = await self._process_llm_stream(
-                output_stream=output_stream,
+            output_text = await self._run_llm(
+                messages=messages,
                 session_id=session_id,
                 stop=self.prompts.stop_sequences,
                 event_bus=event_bus,
@@ -441,9 +442,8 @@ class CodeActAgent:
             level=logging.DEBUG,
         )
 
-        output_stream = self.llm.astream(messages=input_messages, stop=self.prompts.stop_sequences)
-        output_text = await self._process_llm_stream(
-            output_stream=output_stream,
+        output_text = await self._run_llm(
+            messages=input_messages,
             session_id=session_id,
             stop=self.prompts.stop_sequences,
             event_bus=event_bus,
@@ -519,14 +519,12 @@ class CodeActAgent:
         input_messages = [ChatMessage(role="user", content=planning_prompt)]
 
         try:
-            output_stream = self.llm.astream(input_messages, stop=[self.prompts.end_plan_sequence])
-
             plan_prefix = self.prompts.plan_prefix.render().strip() + "\n\n"
             await self._publish_event(event_bus, session_id, EventType.PLANNING_OUTPUT, plan_prefix)
             output_text = plan_prefix
 
-            output_text += await self._process_llm_stream(
-                output_stream=output_stream,
+            output_text += await self._run_llm(
+                messages=input_messages,
                 session_id=session_id,
                 stop=[self.prompts.end_plan_sequence],
                 event_bus=event_bus,

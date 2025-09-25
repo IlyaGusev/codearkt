@@ -1,6 +1,7 @@
 import os
 import copy
 from typing import Dict, Any, List, cast, AsyncGenerator, Optional
+from contextlib import suppress
 
 from tiktoken import encoding_for_model
 from dotenv import load_dotenv
@@ -123,6 +124,10 @@ class LLM:
                 extra_headers=HEADERS,
                 **api_params,
             )
-            async for event in stream:
-                event_typed: ChatCompletionChunk = event
-                yield event_typed
+            try:
+                async for event in stream:
+                    event_typed: ChatCompletionChunk = event
+                    yield event_typed
+            finally:
+                with suppress(Exception):
+                    await stream.close()
