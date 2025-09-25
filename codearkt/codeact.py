@@ -3,6 +3,7 @@ import asyncio
 import copy
 import logging
 import traceback
+from contextlib import suppress
 from pathlib import Path
 from textwrap import dedent
 from datetime import datetime
@@ -277,18 +278,22 @@ class CodeActAgent:
     ) -> str:
         output_text = ""
         last_usage = None
-        async for event in output_stream:
-            if event.usage:
-                last_usage = event.usage
-            delta = event.choices[0].delta
-            if isinstance(delta.content, str):
-                chunk = delta.content
-            elif isinstance(delta.content, list):
-                chunk = "\n".join([str(item) for item in delta.content])
-            output_text += chunk
-            await self._publish_event(event_bus, session_id, event_type, chunk)
-            if any(ss in output_text for ss in stop):
-                break
+        try:
+            async for event in output_stream:
+                if event.usage:
+                    last_usage = event.usage
+                delta = event.choices[0].delta
+                if isinstance(delta.content, str):
+                    chunk = delta.content
+                elif isinstance(delta.content, list):
+                    chunk = "\n".join([str(item) for item in delta.content])
+                output_text += chunk
+                await self._publish_event(event_bus, session_id, event_type, chunk)
+                if any(ss in output_text for ss in stop):
+                    break
+        finally:
+            with suppress(Exception):
+                await output_stream.aclose()
         await self._publish_event(event_bus, session_id, event_type, "\n")
         if last_usage and token_usage_store:
             await token_usage_store.add(
