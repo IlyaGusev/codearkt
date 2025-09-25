@@ -67,15 +67,21 @@ def _exec_with_return(
     mod = ast.parse(code, filename=filename, mode="exec")
 
     last_expr_node = None
+    last_assigned_name: str | None = None
     if mod.body:
         last = mod.body[-1]
         if isinstance(last, ast.Expr):
             last_expr_node = last.value
             mod.body.pop()
-        elif isinstance(last, ast.Assign) and last.targets:
-            last_expr_node = last.targets[0]
-        elif isinstance(last, (ast.AnnAssign, ast.AugAssign)):
-            last_expr_node = last.target
+        elif isinstance(last, ast.Assign):
+            if last.targets and isinstance(last.targets[0], ast.Name):
+                last_assigned_name = last.targets[0].id
+        elif isinstance(last, ast.AnnAssign):
+            if last.value is not None and isinstance(last.target, ast.Name):
+                last_assigned_name = last.target.id
+        elif isinstance(last, ast.AugAssign):
+            if isinstance(last.target, ast.Name):
+                last_assigned_name = last.target.id
 
     exec_code = compile(mod, filename, "exec")
     globals.setdefault("__name__", "__main__")
@@ -87,6 +93,10 @@ def _exec_with_return(
         ast.fix_missing_locations(expr_ast)
         eval_code = compile(expr_ast, filename, "eval")
         return eval(eval_code, globals, locals)
+
+    if last_assigned_name is not None:
+        ns = locals if locals is not None else globals
+        return ns.get(last_assigned_name)
 
     return None
 

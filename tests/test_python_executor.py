@@ -51,6 +51,10 @@ print(proc.stdout)
 print(proc.stderr)
 """
 
+ASSIGN_SNIPPET_1 = """
+a = 1
+"""
+
 
 class TestPythonExecutor:
     async def test_python_executor_basic(self) -> None:
@@ -145,16 +149,17 @@ class TestPythonExecutor:
         result = await executor.ainvoke(EXPR_SNIPPET_2)
         assert result.result is not None
 
-    async def test_python_executor_exceptions(
-        self,
-        mcp_server_test: MCPServerTest,
-    ) -> None:
-        _ = mcp_server_test
+    async def test_python_executor_exceptions(self) -> None:
         executor = PythonExecutor()
         result = await executor.ainvoke(EXCEPT_SNIPPET_1)
         assert result.error
         assert "ZeroDivisionError" in result.error
         assert "line 2" in result.error
+
+    async def test_python_executor_assign_to_variable(self) -> None:
+        executor = PythonExecutor()
+        result = await executor.ainvoke(ASSIGN_SNIPPET_1)
+        assert result.result == 1
 
 
 def test_execresult_to_message_with_text_result() -> None:

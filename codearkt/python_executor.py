@@ -21,7 +21,7 @@ from codearkt.tools import fetch_tools
 from codearkt.util import get_unique_id, truncate_content, is_correct_json
 
 
-SHA_DIGEST: str = "sha256:c0b59a80d38387f1f2807146a50e4163920c2837f3b4dc6e90441309ed976588"
+SHA_DIGEST: str = "sha256:80d6a882a7e0f195aa9f112065c0f13c829778243ac013c69437a7d7d66053e4"
 DEFAULT_IMAGE: str = f"phoenix120/codearkt_http@{SHA_DIGEST}"
 IMAGE: str = os.getenv("CODEARKT_EXECUTOR_IMAGE", DEFAULT_IMAGE)
 MEM_LIMIT: str = "1g"
