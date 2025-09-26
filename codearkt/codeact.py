@@ -164,7 +164,7 @@ class CodeActAgent:
                 messages = [ChatMessage(role="system", content=system_prompt)] + messages
 
             for step_number in range(1, self.max_iterations + 1):
-                # Optional planning step
+                # Optional planning step.
                 if self.planning_interval is not None and (
                     step_number == 1 or (step_number - 1) % self.planning_interval == 0
                 ):
@@ -188,7 +188,7 @@ class CodeActAgent:
                         session_id=session_id,
                     )
 
-                # Main step
+                # Main step.
                 self._log(
                     f"Step {step_number} started",
                     run_id=run_id,
@@ -212,7 +212,7 @@ class CodeActAgent:
                 if messages[-1].role == "assistant":
                     break
             else:
-                # Final step
+                # Final step.
                 new_messages = await self._handle_final_message(
                     messages,
                     session_id=session_id,
@@ -237,7 +237,7 @@ class CodeActAgent:
             )
             raise exc
         finally:
-            # Cleanup
+            # Cleanup.
             if python_executor:
                 await python_executor.cleanup()
             await self._publish_event(event_bus, session_id, EventType.AGENT_END)
@@ -284,20 +284,25 @@ class CodeActAgent:
             async for event in output_stream:
                 if event.usage:
                     last_usage = event.usage
+
+                # Ignore everything after the stop sequence.
+                # Can't just break because of the usage tracking.
+                if any(ss in output_text for ss in stop):
+                    continue
+
                 delta = event.choices[0].delta
                 if isinstance(delta.content, str):
                     chunk = delta.content
                 elif isinstance(delta.content, list):
                     chunk = "\n".join([str(item) for item in delta.content])
+
                 output_text += chunk
                 await self._publish_event(event_bus, session_id, event_type, chunk)
-                if any(ss in output_text for ss in stop):
-                    break
         finally:
             with suppress(Exception):
                 await output_stream.aclose()
         await self._publish_event(event_bus, session_id, event_type, "\n")
-        if last_usage and token_usage_store:
+        if token_usage_store and last_usage:
             await token_usage_store.add(
                 session_id, last_usage.prompt_tokens, last_usage.completion_tokens
             )
@@ -313,7 +318,8 @@ class CodeActAgent:
         token_usage_store: TokenUsageStore | None = None,
         step_number: int | None = None,
     ) -> ChatMessages:
-        _ = step_number  # for logs only
+        # Passed step_number for telemetry only.
+        _ = step_number
         self._log(
             f"Step inputs: {messages}", run_id=run_id, session_id=session_id, level=logging.DEBUG
         )
@@ -386,7 +392,7 @@ class CodeActAgent:
         )
         new_messages.append(tool_call_message)
 
-        # Execute code
+        # Execute code.
         try:
             self._log("Executing code...", run_id=run_id, session_id=session_id)
             code_result = await python_executor.ainvoke(code_action)
