@@ -428,7 +428,8 @@ class CodeActAgent:
         code_action = extract_code_from_text(content)
         assert code_action is None
         content = content.lower()
-        return "final answer:" in content
+        final_answer_keywords = ("final answer:", "**final answer**:")
+        return any(keyword in content for keyword in final_answer_keywords)
 
     async def _handle_final_message(
         self,
