@@ -319,7 +319,7 @@ async def _start_temporary_server(
         ws="none",
     )
     server = uvicorn.Server(config)
-    server_task: asyncio.Task[None] = asyncio.create_task(server.serve())
+    server_task: asyncio.Task[None] = asyncio.create_task(server._serve(sockets=None))
 
     await asyncio.wait_for(_wait_until_started(server), timeout=30)
 
@@ -398,12 +398,15 @@ async def run_batch(
                     result = await asyncio.wait_for(task, timeout=task_timeout)
                 else:
                     result = await task
+            except asyncio.CancelledError:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+                raise
             except asyncio.TimeoutError:
                 task.cancel()
-                try:
+                with contextlib.suppress(asyncio.CancelledError, asyncio.TimeoutError):
                     await asyncio.wait_for(task, timeout=2)
-                except (asyncio.CancelledError, asyncio.TimeoutError):
-                    pass
                 result = f"Timeout after {task_timeout}"
             except Exception as e:
                 result = f"Error: {e}"
@@ -424,10 +427,19 @@ async def run_batch(
                     )
                 return result
 
+    results: List[str] = []
     try:
-        tasks = [_run_single(q) for q in queries]
-        results: List[str] = await asyncio.gather(*tasks)
+        tasks: List[asyncio.Task[str]] = [asyncio.create_task(_run_single(q)) for q in queries]
+        try:
+            results = await asyncio.gather(*tasks)
+        except (asyncio.CancelledError, KeyboardInterrupt):
+            for t in tasks:
+                t.cancel()
+            with contextlib.suppress(Exception):
+                await asyncio.gather(*tasks, return_exceptions=True)
+            raise
     finally:
-        await _shutdown_server(server, server_task)
+        with contextlib.suppress(asyncio.CancelledError):
+            await asyncio.shield(_shutdown_server(server, server_task))
 
     return results
