@@ -4,16 +4,12 @@ import copy
 import logging
 import traceback
 from contextlib import suppress
-from pathlib import Path
 from textwrap import dedent
 from datetime import datetime
-from dataclasses import dataclass, field
-from typing import List, Self, Dict, Any, Optional, Sequence, get_args
+from typing import List, Self, Optional, Sequence
 
-import yaml
 
 from mcp import Tool
-from jinja2 import Template
 
 from codearkt.python_executor import PythonExecutor
 from codearkt.tools import fetch_tools
@@ -21,11 +17,9 @@ from codearkt.event_bus import AgentEventBus, EventType
 from codearkt.llm import LLM, ChatMessages, ChatMessage
 from codearkt.util import get_unique_id, truncate_content
 from codearkt.metrics import TokenUsageStore
+from codearkt.prompts import Prompts
 
 
-DEFAULT_END_CODE_SEQUENCE = "<end_code>"
-DEFAULT_END_PLAN_SEQUENCE = "<end_plan>"
-DEFAULT_STOP_SEQUENCES = [DEFAULT_END_CODE_SEQUENCE, "Observation:", "Calling tools:"]
 AGENT_TOOL_PREFIX = "agent__"
 DEFAULT_MAX_ITERATIONS = 20
 PLANNING_LAST_N = 50
@@ -38,44 +32,6 @@ def extract_code_from_text(text: str) -> str | None:
     if matches:
         return "\n\n".join(match.strip() for match in matches)
     return None
-
-
-@dataclass
-class Prompts:
-    system: Template
-    final: Template
-    no_code_action: Template
-    plan: Optional[Template] = None
-    plan_prefix: Optional[Template] = None
-    plan_suffix: Optional[Template] = None
-    end_code_sequence: str = DEFAULT_END_CODE_SEQUENCE
-    end_plan_sequence: str = DEFAULT_END_PLAN_SEQUENCE
-    stop_sequences: List[str] = field(default_factory=lambda: DEFAULT_STOP_SEQUENCES)
-
-    @classmethod
-    def load(cls, path: str | Path) -> Self:
-        with open(path) as f:
-            template = f.read()
-        templates: Dict[str, Any] = yaml.safe_load(template)
-        wrapped_templates: Dict[str, Any] = {}
-        for key, value in templates.items():
-            if value is None:
-                continue
-            field_type = cls.__annotations__.get(key)
-            if field_type is Template or Template in get_args(field_type):
-                wrapped_templates[key] = Template(value)
-            elif field_type is str:
-                wrapped_templates[key] = value.strip()
-            else:
-                wrapped_templates[key] = value
-        obj = cls(**wrapped_templates)
-        obj.stop_sequences = [s.strip() for s in obj.stop_sequences]
-        return obj
-
-    @classmethod
-    def default(cls) -> Self:
-        current_dir = Path(__file__).parent
-        return cls.load(current_dir / "prompts" / "default.yaml")
 
 
 class CodeActAgent:

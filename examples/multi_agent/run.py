@@ -6,7 +6,8 @@ from phoenix.otel import register
 from dotenv import load_dotenv
 import fire  # type: ignore
 
-from codearkt.codeact import CodeActAgent, Prompts
+from codearkt.codeact import CodeActAgent
+from codearkt.prompts import Prompts
 from codearkt.llm import LLM
 from codearkt.server import run_server
 from codearkt.otel import CodeActInstrumentor

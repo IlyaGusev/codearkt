@@ -399,3 +399,20 @@ class TestCodeActAgent:
         result = await run_query("What is 432412421249 * 4332144219?", agent, {})
         str_result = str(result).replace(",", "").replace(".", "").replace(" ", "")
         assert "1873272970937648109531" in str_result, str_result
+
+    async def test_codeact_prompt_output_schema(
+        self, deepseek: LLM, mcp_server_test: MCPServerTest
+    ) -> None:
+        host = mcp_server_test.host
+        port = mcp_server_test.port
+        agent_name = "agent"
+        agent = CodeActAgent(
+            name=agent_name,
+            description="Just agent",
+            llm=deepseek,
+            tool_names=["structured_arxiv_download", "arxiv_search"],
+        )
+        tools = await agent._get_tools(server_host=host, server_port=port)
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        system_prompt = agent.prompts.system.render(tools=tools, current_date=current_date)
+        assert "The title of the paper" in system_prompt

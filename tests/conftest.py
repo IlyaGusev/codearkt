@@ -3,11 +3,11 @@ import json
 import threading
 import time
 import logging
-from typing import Generator, List
+from typing import Generator, List, Optional
 from contextlib import suppress
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import uvicorn
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
@@ -63,17 +63,29 @@ def get_nested_agent(verbosity_level: int = logging.ERROR) -> CodeActAgent:
     )
 
 
-class DownloadResult(BaseModel):  # type: ignore
-    title: str
-    abstract: str
-    toc: str | None = None
-    sections: List[str] | None = None
-    citations: List[str] | None = None
+class NestedModel(BaseModel):  # type: ignore
+    field: str = Field(description="The field of the nested model")
 
 
-def structured_arxiv_download(paper_id: str) -> DownloadResult:
+class StructuredDownloadResult(BaseModel):  # type: ignore
+    title: str = Field(description="The title of the paper")
+    abstract: str = Field(description="The abstract of the paper")
+    toc: str | None = Field(description="The table of contents of the paper", default=None)
+    sections: List[str] | None = Field(description="The sections of the paper", default=None)
+    citations: List[str] | None = Field(description="The citations of the paper", default=None)
+    nested_model: Optional[List[NestedModel]] = Field(
+        description="The nested model for test", default=None
+    )
+
+
+def structured_arxiv_download(paper_id: str) -> StructuredDownloadResult:
+    """
+    Download a paper from arXiv.
+    Args:
+        paper_id: The ID of the paper to download.
+    """
     result = json.loads(arxiv_download(paper_id=paper_id))
-    deserialized: DownloadResult = DownloadResult.model_validate(result)
+    deserialized: StructuredDownloadResult = StructuredDownloadResult.model_validate(result)
     return deserialized
 
 
