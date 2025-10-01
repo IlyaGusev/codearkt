@@ -11,7 +11,7 @@ from functools import partial
 from pydantic import ValidationError
 
 from mcp import ClientSession, Tool
-from mcp.types import ContentBlock
+from mcp.types import ContentBlock, CallToolResult
 from mcp.client.streamable_http import streamablehttp_client
 
 AGENT_TIMEOUT = int(os.getenv("AGENT_TIMEOUT", 24 * 60 * 60))
@@ -19,7 +19,7 @@ TOOL_TIMEOUT = int(os.getenv("TOOL_TIMEOUT", 12 * 60 * 60))
 SERVER_URL_TEMPLATE = os.getenv("SERVER_URL_TEMPLATE", "http://host.docker.internal:{port}")
 
 
-ToolReturnType = List[ContentBlock] | str | None
+ToolReturnType = Any
 
 _tool_schemas: Dict[str, Tool] = {}
 
@@ -65,7 +65,14 @@ async def _acall(tool: str, tool_server_port: int, *args: Any, **kwargs: Any) ->
                             if param_name not in arguments:
                                 arguments[param_name] = arg
 
-            result = await session.call_tool(tool, arguments)
+            result: CallToolResult = await session.call_tool(tool, arguments)
+
+            structured_content = result.structuredContent
+            if structured_content:
+                if "result" in structured_content and len(structured_content) == 1:
+                    return structured_content["result"]
+                return structured_content
+
             content_blocks: List[ContentBlock] = result.content
             if len(content_blocks) == 0:
                 return None
@@ -74,10 +81,8 @@ async def _acall(tool: str, tool_server_port: int, *args: Any, **kwargs: Any) ->
             return content_blocks
 
 
-def _call(
-    tool: str, tool_server_port: int, *args: Any, **kwargs: Any
-) -> List[ContentBlock] | str | None:
-    def runner() -> List[ContentBlock] | str | None:
+def _call(tool: str, tool_server_port: int, *args: Any, **kwargs: Any) -> ToolReturnType:
+    def runner() -> ToolReturnType:
         return asyncio.run(_acall(tool, tool_server_port, *args, **kwargs))
 
     executor = ThreadPoolExecutor(max_workers=1)

@@ -3,7 +3,6 @@ import time
 import os
 import asyncio
 import atexit
-import json
 import traceback
 from typing import Optional, Any, List, Dict, Sequence
 import threading
@@ -21,7 +20,7 @@ from codearkt.tools import fetch_tools
 from codearkt.util import get_unique_id, truncate_content, is_correct_json
 
 
-SHA_DIGEST: str = "sha256:80d6a882a7e0f195aa9f112065c0f13c829778243ac013c69437a7d7d66053e4"
+SHA_DIGEST: str = "sha256:8866223c75d644f51d0da5f12a8400ae4aa62262d5331b0e69dc7a3576055873"
 DEFAULT_IMAGE: str = f"phoenix120/codearkt_http@{SHA_DIGEST}"
 IMAGE: str = os.getenv("CODEARKT_EXECUTOR_IMAGE", DEFAULT_IMAGE)
 MEM_LIMIT: str = "1g"
@@ -70,18 +69,14 @@ class ExecResult(BaseModel):  # type: ignore
             output += "Output:\n" + self.stdout + "\n\n"
 
         if self.result:
-            try:
-                json_result = json.loads(str(self.result))
-                if isinstance(json_result, dict) and "image_base64" in json_result:
-                    image_base64 = json_result["image_base64"]
-                    image_content = [
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/png;base64,{image_base64}"},
-                        }
-                    ]
-            except json.JSONDecodeError:
-                pass
+            if isinstance(self.result, dict) and "image_base64" in self.result:
+                image_base64 = self.result["image_base64"]
+                image_content = [
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{image_base64}"},
+                    }
+                ]
             if not image_content:
                 output += "Last expression:\n" + str(self.result) + "\n\n"
 

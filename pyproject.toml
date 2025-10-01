@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "codearkt"
-version = "1.8.10"
+version = "1.8.11"
 description = "CodeAct implementation with Docker and MCP"
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -18,7 +18,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "academia-mcp>=1.4.0",
+    "academia-mcp>=1.10.9",
     "arize-phoenix-otel>=0.12.1",
     "docker>=7.1.0",
     "fastmcp==2.11.3",
@@ -26,7 +26,6 @@ dependencies = [
     "jinja2>=3.1.6",
     "openai>=1.93.0",
     "openinference-instrumentation-openai>=0.1.30",
-    "pillow>=9.0.0",
     "pytest-asyncio>=1.0.0",
     "types-docker>=7.1.0.20250523",
     "types-pyyaml>=6.0.12.20250516",

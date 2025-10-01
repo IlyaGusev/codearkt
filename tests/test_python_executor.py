@@ -1,9 +1,10 @@
 import pytest
-import json
+
+from academia_mcp.tools import show_image
 
 from codearkt.python_executor import PythonExecutor, ExecResult
 
-from tests.conftest import MCPServerTest, show_image
+from tests.conftest import MCPServerTest
 
 SNIPPET_1 = """
 answer = "Answer 1"
@@ -24,6 +25,11 @@ SNIPPET_4 = """
 doc = arxiv_download(paper_id="2506.15003")
 answer = document_qa(question="What is the capital of France?", document=doc)
 print(answer, end="")
+"""
+
+SNIPPET_5 = """
+answer = structured_arxiv_download(paper_id="2506.15003")
+print(answer["abstract"], end="")
 """
 
 EXPR_SNIPPET_1 = """
@@ -161,6 +167,19 @@ class TestPythonExecutor:
         result = await executor.ainvoke(ASSIGN_SNIPPET_1)
         assert result.result == 1
 
+    async def test_python_executor_mcp_call_structured_tool(
+        self,
+        mcp_server_test: MCPServerTest,
+    ) -> None:
+        _ = mcp_server_test
+        executor = PythonExecutor(
+            tool_names=["structured_arxiv_download"],
+            tools_server_host=mcp_server_test.host,
+            tools_server_port=mcp_server_test.port,
+        )
+        result = await executor.ainvoke(SNIPPET_5)
+        assert result.stdout.startswith("We present evidence")
+
 
 def test_execresult_to_message_with_text_result() -> None:
     r = ExecResult(stdout="hello", error=None, result={"a": 1})
@@ -172,7 +191,7 @@ def test_execresult_to_message_with_text_result() -> None:
 
 
 def test_execresult_to_message_with_image(test_image_url: str) -> None:
-    r = ExecResult(stdout="", error=None, result=json.dumps(show_image(test_image_url)))
+    r = ExecResult(stdout="", error=None, result=show_image(test_image_url))
     msg = r.to_message()
     assert isinstance(msg.content, list)
     assert any(c.get("type") == "image_url" for c in msg.content)

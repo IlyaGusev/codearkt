@@ -11,6 +11,9 @@ services:
       - ACADEMIA_MCP_URL=http://academia:${ACADEMIA_PORT:-5056}/mcp
       - PHOENIX_URL=http://phoenix:6006
       - PHOENIX_PROJECT_NAME=codearkt
+      - WORKSPACE_DIR=/workdir
+    volumes:
+      - ./workdir:/workdir
     env_file:
       - .env
     depends_on:
@@ -24,7 +27,7 @@ services:
       - "${APP_PORT:-5055}:5055"
 
   executor:
-    image: phoenix120/codearkt_http@sha256:54b14fca72705bf30ea9051806748ff226ed9f59eeb032f54fb15fc3b7e5332c 
+    image: phoenix120/codearkt_http@sha256:80d6a882a7e0f195aa9f112065c0f13c829778243ac013c69437a7d7d66053e4
     container_name: codearkt-executor
     environment:
       - SERVER_URL_TEMPLATE=http://app:{port}
@@ -55,7 +58,7 @@ services:
       - "${PHOENIX_OTLP_PORT:-4317}:4317"
 
   academia:
-    image: phoenix120/academia_mcp
+    image: phoenix120/academia_mcp:1.10.9
     container_name: academia
     command: ["uv", "run", "-m", "academia_mcp", "--transport", "streamable-http", "--host", "0.0.0.0", "--port", "${ACADEMIA_PORT:-5056}"]
     ports:
@@ -65,5 +68,9 @@ services:
       interval: 5s
       timeout: 2s
       retries: 30
+    environment:
+      - WORKSPACE_DIR=/workdir
+    volumes:
+      - ./workdir:/workdir
     env_file:
       - .env

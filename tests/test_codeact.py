@@ -177,6 +177,7 @@ class TestCodeActAgent:
             description="Just agent",
             llm=gpt_4o,
             tool_names=["show_image"],
+            max_iterations=5,
         )
         result = await agent.ainvoke(
             [

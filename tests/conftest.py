@@ -1,19 +1,17 @@
 import asyncio
+import json
 import threading
 import time
 import logging
-import base64
-from io import BytesIO
-from typing import Generator, Dict
+from typing import Generator, List
 from contextlib import suppress
 
-import httpx
 import pytest
+from pydantic import BaseModel
 import uvicorn
-from PIL import Image
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
-from academia_mcp.tools import arxiv_download, arxiv_search, document_qa
+from academia_mcp.tools import arxiv_download, arxiv_search, document_qa, show_image
 
 from codearkt.llm import LLM
 from codearkt.codeact import CodeActAgent
@@ -65,28 +63,18 @@ def get_nested_agent(verbosity_level: int = logging.ERROR) -> CodeActAgent:
     )
 
 
-def show_image(url: str) -> Dict[str, str]:
-    """
-    Reads an image from the specified URL.
-    Always call this function at the end of the code block.
-    For instance:
-    ```python
-    show_image("https://example.com/image.png")
-    ```
-    Do not print it ever, just return as the last expression.
+class DownloadResult(BaseModel):  # type: ignore
+    title: str
+    abstract: str
+    toc: str | None = None
+    sections: List[str] | None = None
+    citations: List[str] | None = None
 
-    Returns an dictionary with a single "image" key.
-    Args:
-        url: Path to file or directory inside current work directory or web URL. Should not be absolute.
-    """
-    assert url.startswith("http")
-    response = httpx.get(url, timeout=10)
-    response.raise_for_status()
-    image = Image.open(BytesIO(response.content))
-    buffer_io = BytesIO()
-    image.save(buffer_io, format="PNG")
-    img_bytes = buffer_io.getvalue()
-    return {"image_base64": base64.b64encode(img_bytes).decode("utf-8")}
+
+def structured_arxiv_download(paper_id: str) -> DownloadResult:
+    result = json.loads(arxiv_download(paper_id=paper_id))
+    deserialized: DownloadResult = DownloadResult.model_validate(result)
+    return deserialized
 
 
 class MCPServerTest:
@@ -103,6 +91,7 @@ class MCPServerTest:
         mcp_server.add_tool(arxiv_download)
         mcp_server.add_tool(document_qa)
         mcp_server.add_tool(show_image)
+        mcp_server.add_tool(structured_arxiv_download, structured_output=True)
         app = mcp_server.streamable_http_app()
         agent_app = get_agent_app(
             get_nested_agent(),
