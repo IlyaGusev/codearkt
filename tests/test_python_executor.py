@@ -17,18 +17,19 @@ print("Variable still here:", answer, end="")
 
 SNIPPET_3 = """
 import json
-answer1 = json.loads(arxiv_download(paper_id="2506.15003"))["title"]
+answer1 = arxiv_download(paper_id="2506.15003")["title"]
 print("Answer 1:", answer1, end="")
 """
 
 SNIPPET_4 = """
+import json
 doc = arxiv_download(paper_id="2506.15003")
-answer = document_qa(question="What is the capital of France?", document=doc)
+answer = document_qa(question="What is the capital of France?", document=json.dumps(doc))
 print(answer, end="")
 """
 
 SNIPPET_5 = """
-answer = structured_arxiv_download(paper_id="2506.15003")
+answer = arxiv_download(paper_id="2506.15003")
 print(answer["abstract"], end="")
 """
 
@@ -173,7 +174,7 @@ class TestPythonExecutor:
     ) -> None:
         _ = mcp_server_test
         executor = PythonExecutor(
-            tool_names=["structured_arxiv_download"],
+            tool_names=["arxiv_download"],
             tools_server_host=mcp_server_test.host,
             tools_server_port=mcp_server_test.port,
         )
