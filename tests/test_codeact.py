@@ -19,22 +19,12 @@ from tests.conftest import MCPServerTest, get_nested_agent
 
 class TestExtractCodeFromText:
     def test_extract_code_from_text_basic(self) -> None:
-        text = 'Code:\n```python\nprint("Hello, world!")\n```'
+        text = '<execute>\nprint("Hello, world!")\n</execute>'
         code = extract_code_from_text(dedent(text))
         assert code == 'print("Hello, world!")', code
 
     def test_extract_code_from_text_line_breaks(self) -> None:
-        text = 'Code:\n```python\n\n\nprint("Hello, world!")\n```'
-        code = extract_code_from_text(dedent(text))
-        assert code == 'print("Hello, world!")', code
-
-    def test_extract_code_from_text_py(self) -> None:
-        text = 'Code:\n```py\nprint("Hello, world!")\n```'
-        code = extract_code_from_text(dedent(text))
-        assert code == 'print("Hello, world!")', code
-
-    def test_extract_code_from_text_change(self) -> None:
-        text = 'Execute code:\n```python\nprint("Hello, world!")\n```'
+        text = '<execute>\n\n\nprint("Hello, world!")\n</execute>'
         code = extract_code_from_text(dedent(text))
         assert code == 'print("Hello, world!")', code
 
@@ -44,24 +34,14 @@ class TestExtractCodeFromText:
         assert code is None
 
     def test_extract_code_from_text_multiple(self) -> None:
-        text = "Code:\n```py\na = 1\n```\nAnother code:\n```py\nb = 2\n```"
+        text = "<execute>\na = 1\n</execute>\n<execute>\nb = 2\n</execute>"
         code = extract_code_from_text(dedent(text))
         assert code == "a = 1\n\nb = 2", code
 
     def test_extract_code_from_text_code_unclosed(self) -> None:
-        text = 'Code:\n```python\nprint("Hello, world!")\n'
+        text = '<execute>\nprint("Hello, world!")\n'
         code = extract_code_from_text(dedent(text))
         assert code is None
-
-    def test_extract_code_from_text_spaces_bug(self) -> None:
-        text = 'Code:    \n```python\nprint("Hello, world!")\n```'
-        code = extract_code_from_text(dedent(text))
-        assert code is not None, code
-
-    def test_extract_code_markdown(self) -> None:
-        text = '**Code:**\n```py\nprint("Hello, world!")\n```'
-        code = extract_code_from_text(dedent(text))
-        assert code is not None, code
 
 
 class TestCodeActAgent:

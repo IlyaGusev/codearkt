@@ -1,15 +1,15 @@
 import json
-from typing import Dict, Any
 from dataclasses import dataclass, field
-from typing import List, Optional, Self, get_args
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Self, get_args
 
-from jinja2 import Template, Environment
 import yaml
+from jinja2 import Environment, Template
 
-DEFAULT_END_CODE_SEQUENCE = "<end_code>"
+DEFAULT_BEGIN_CODE_SEQUENCE = "<execute>"
+DEFAULT_END_CODE_SEQUENCE = "</execute>"
 DEFAULT_END_PLAN_SEQUENCE = "<end_plan>"
-DEFAULT_STOP_SEQUENCES = [DEFAULT_END_CODE_SEQUENCE, "Observation:", "Calling tools:"]
+DEFAULT_STOP_SEQUENCES = ["Observation:", "Calling tools:"]
 
 
 def _schema_to_md_internal(schema: Dict[str, Any]) -> str:
@@ -116,6 +116,7 @@ class PromptStorage:
     plan: Optional[Template] = None
     plan_prefix: Optional[Template] = None
     plan_suffix: Optional[Template] = None
+    begin_code_sequence: str = DEFAULT_BEGIN_CODE_SEQUENCE
     end_code_sequence: str = DEFAULT_END_CODE_SEQUENCE
     end_plan_sequence: str = DEFAULT_END_PLAN_SEQUENCE
     stop_sequences: List[str] = field(default_factory=lambda: DEFAULT_STOP_SEQUENCES)

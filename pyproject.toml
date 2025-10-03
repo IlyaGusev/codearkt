@@ -46,6 +46,7 @@ dev = [
     "flake8==7.2.0",
     "pytest>=8.4.1",
     "pytest-asyncio>=1.1.0",
+    "isort>=6.1.0",
 ]
 
 [project.urls]

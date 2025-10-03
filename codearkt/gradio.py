@@ -1,5 +1,4 @@
-import tempfile
-import os
+from collections import defaultdict
 from typing import Iterator, List, Dict, Any
 
 import gradio as gr
@@ -12,6 +11,15 @@ from codearkt.client import query_agent, stop_agent
 from codearkt.server import DEFAULT_SERVER_PORT, DEFAULT_SERVER_HOST
 
 CODE_TITLE = "Code execution result"
+
+
+def escape_code_blocks(text: str) -> str:
+    text = text.replace("<execute>", "```python ")
+    text = text.replace("</execute>", "\n```")
+    text = text.replace("<final_answer>", "**Final answer**:\n")
+    text = text.replace("</final_answer>", "")
+    text = text.replace("<end_plan>", "")
+    return text
 
 
 def bot(
@@ -27,6 +35,7 @@ def bot(
     real_messages.append(ChatMessage(role="user", content=message))
     events = query_agent(real_messages, session_id=session_id, host=host, port=port)
     agent_names: List[str] = []
+    raw_contents: Dict[int, str] = defaultdict(str)
     history.append({"role": "assistant", "content": ""})
     for event in events:
         session_id = event.session_id or session_id
@@ -68,7 +77,9 @@ def bot(
                 history.append({"role": "assistant", "content": ""})
 
             assert event.content is not None
-            history[-1]["content"] += event.content
+            current_idx = len(history) - 1
+            raw_contents[current_idx] += event.content
+            history[-1]["content"] = escape_code_blocks(raw_contents[current_idx])
 
             if is_root_agent and event.event_type == EventType.OUTPUT:
                 if real_messages[-1].role == "assistant" and not real_messages[-1].tool_calls:
@@ -94,25 +105,6 @@ class GradioUI:
                 additional_inputs=[session_id_state, real_messages_state, host_state, port_state],
                 additional_outputs=[session_id_state, real_messages_state],
                 save_history=True,
-            )
-
-            download_button = gr.DownloadButton(
-                label="💾 Download conversation",
-                variant="secondary",
-            )
-
-            def _download_conversation(real_messages: List[ChatMessage]) -> str:
-                lines = [f"{msg.role}: {msg.content}" for msg in real_messages]
-                text = "\n\n".join(lines)
-
-                fd, path = tempfile.mkstemp(prefix="conversation_", suffix=".txt")
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    f.write(text)
-
-                return path
-
-            download_button.click(
-                _download_conversation, inputs=[real_messages_state], outputs=download_button
             )
 
             def _on_stop(session_id: str | None) -> str | None:
