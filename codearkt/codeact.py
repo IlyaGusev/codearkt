@@ -17,7 +17,7 @@ from codearkt.event_bus import AgentEventBus, EventType
 from codearkt.llm import LLM, ChatMessages, ChatMessage
 from codearkt.util import get_unique_id, truncate_content
 from codearkt.metrics import TokenUsageStore
-from codearkt.prompts import Prompts
+from codearkt.prompt_storage import PromptStorage
 
 
 AGENT_TOOL_PREFIX = "agent__"
@@ -41,7 +41,7 @@ class CodeActAgent:
         description: str,
         llm: LLM,
         tool_names: Sequence[str] = tuple(),
-        prompts: Optional[Prompts] = None,
+        prompts: Optional[PromptStorage] = None,
         max_iterations: int = DEFAULT_MAX_ITERATIONS,
         verbosity_level: int = logging.ERROR,
         planning_interval: Optional[int] = None,
@@ -50,7 +50,7 @@ class CodeActAgent:
         self.name = name
         self.description = description
         self.llm: LLM = llm
-        self.prompts: Prompts = prompts or Prompts.default()
+        self.prompts: PromptStorage = prompts or PromptStorage.default()
         self.tool_names = list(tool_names)
         self.max_iterations = max_iterations
         self.verbosity_level = verbosity_level

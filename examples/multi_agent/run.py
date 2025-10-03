@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 import fire  # type: ignore
 
 from codearkt.codeact import CodeActAgent
-from codearkt.prompts import Prompts
+from codearkt.prompt_storage import PromptStorage
 from codearkt.llm import LLM
 from codearkt.server import run_server
 from codearkt.otel import CodeActInstrumentor
@@ -29,7 +29,7 @@ Give him your task as an only string argument. Follow the task format described 
 
 def get_librarian() -> CodeActAgent:
     llm = LLM(model_name="deepseek/deepseek-chat-v3-0324")
-    prompts = Prompts.load(current_dir / "librarian.yaml")
+    prompts = PromptStorage.load(current_dir / "librarian.yaml")
     return CodeActAgent(
         name="librarian",
         description=LIBRARIAN_DESCRIPTION,

@@ -109,7 +109,7 @@ def _create_jinja_env() -> Environment:
 
 
 @dataclass
-class Prompts:
+class PromptStorage:
     system: Template
     final: Template
     no_code_action: Template
