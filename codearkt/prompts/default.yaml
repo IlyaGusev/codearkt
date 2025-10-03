@@ -141,7 +141,7 @@ plan: |
   - Has less than 6 steps
   - Uses available tools, inputs, and facts
   - Solves task completely
-  - Ends with an '<end_plan>' tag
+  - Starts with <plan> tag and ends with </plan> tag
   Keep steps essential, sequential, and high-level. Start with the most generic tools. For instance, with web_search.
 
   ## Tools

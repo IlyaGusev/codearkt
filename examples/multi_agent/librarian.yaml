@@ -221,7 +221,7 @@ plan: |
   - Has less than 6 steps
   - Uses available tools, inputs, and facts
   - Solves task completely
-  - Ends with '<end_plan>'
+  - Starts with <plan> tag and ends with </plan> tag
   Keep steps essential, sequential, and high-level.
   
   Search guidelines:
@@ -251,11 +251,3 @@ no_code_action: |
   No code block or final answer was provided.
   The code block should be within '<execute> ... </execute>' tags.
   The final answer should be within '<final_answer> ... </final_answer>' tags.
-
-end_code_sequence: </execute>
-end_plan_sequence: <end_plan>
-stop_sequences:
-  - </execute>
-  - <end_plan>
-  - "Observation:"
-  - "Calling tools:"

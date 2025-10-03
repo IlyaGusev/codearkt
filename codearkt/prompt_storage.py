@@ -8,7 +8,8 @@ from jinja2 import Environment, Template
 
 DEFAULT_BEGIN_CODE_SEQUENCE = "<execute>"
 DEFAULT_END_CODE_SEQUENCE = "</execute>"
-DEFAULT_END_PLAN_SEQUENCE = "<end_plan>"
+DEFAULT_BEGIN_PLAN_SEQUENCE = "<plan>"
+DEFAULT_END_PLAN_SEQUENCE = "</plan>"
 DEFAULT_STOP_SEQUENCES = ["Observation:", "Calling tools:"]
 
 
@@ -118,6 +119,7 @@ class PromptStorage:
     plan_suffix: Optional[Template] = None
     begin_code_sequence: str = DEFAULT_BEGIN_CODE_SEQUENCE
     end_code_sequence: str = DEFAULT_END_CODE_SEQUENCE
+    begin_plan_sequence: str = DEFAULT_BEGIN_PLAN_SEQUENCE
     end_plan_sequence: str = DEFAULT_END_PLAN_SEQUENCE
     stop_sequences: List[str] = field(default_factory=lambda: DEFAULT_STOP_SEQUENCES)
 

@@ -512,6 +512,7 @@ class CodeActAgent:
 
             if self.prompts.end_plan_sequence in output_text:
                 output_text = output_text.split(self.prompts.end_plan_sequence)[0].strip()
+            output_text += self.prompts.end_plan_sequence
 
             plan_suffix = self.prompts.plan_suffix.render().strip()
             return [

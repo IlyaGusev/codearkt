@@ -9,16 +9,23 @@ from codearkt.llm import ChatMessage
 from codearkt.util import get_unique_id
 from codearkt.client import query_agent, stop_agent
 from codearkt.server import DEFAULT_SERVER_PORT, DEFAULT_SERVER_HOST
+from codearkt.prompt_storage import (
+    DEFAULT_BEGIN_PLAN_SEQUENCE,
+    DEFAULT_END_PLAN_SEQUENCE,
+    DEFAULT_BEGIN_CODE_SEQUENCE,
+    DEFAULT_END_CODE_SEQUENCE,
+)
 
 CODE_TITLE = "Code execution result"
 
 
 def escape_code_blocks(text: str) -> str:
-    text = text.replace("<execute>", "```python ")
-    text = text.replace("</execute>", "\n```")
+    text = text.replace(DEFAULT_BEGIN_CODE_SEQUENCE, "```python ")
+    text = text.replace(DEFAULT_END_CODE_SEQUENCE, "\n```")
+    text = text.replace(DEFAULT_BEGIN_PLAN_SEQUENCE, "")
+    text = text.replace(DEFAULT_END_PLAN_SEQUENCE, "")
     text = text.replace("<final_answer>", "**Final answer**:\n")
     text = text.replace("</final_answer>", "")
-    text = text.replace("<end_plan>", "")
     return text
 
 
