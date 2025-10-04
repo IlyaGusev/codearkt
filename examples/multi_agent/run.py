@@ -3,7 +3,6 @@ import logging
 from pathlib import Path
 
 from phoenix.otel import register
-from dotenv import load_dotenv
 import fire  # type: ignore
 
 from codearkt.codeact import CodeActAgent
@@ -11,8 +10,6 @@ from codearkt.prompt_storage import PromptStorage
 from codearkt.llm import LLM
 from codearkt.server import run_server
 from codearkt.otel import CodeActInstrumentor
-
-load_dotenv()
 
 current_dir = Path(__file__).parent
 

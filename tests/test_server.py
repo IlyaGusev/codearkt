@@ -1,9 +1,10 @@
 from httpx import ASGITransport, AsyncClient
 
-from codearkt.server import get_main_app, DEFAULT_SERVER_HOST
+from codearkt.server import get_main_app
 from codearkt.codeact import CodeActAgent
 from codearkt.llm import LLM
 from codearkt.event_bus import AgentEventBus
+from codearkt.settings import settings
 
 
 async def test_agents_list_and_cancel_endpoint() -> None:
@@ -12,7 +13,7 @@ async def test_agents_list_and_cancel_endpoint() -> None:
         agent,
         event_bus=AgentEventBus(),
         mcp_config=None,
-        server_host=DEFAULT_SERVER_HOST,
+        server_host=settings.DEFAULT_SERVER_HOST,
         server_port=0,
     )
 

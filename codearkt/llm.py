@@ -1,24 +1,18 @@
-import os
 import copy
-from typing import Dict, Any, List, cast, AsyncGenerator, Optional
 from contextlib import suppress
+from typing import Any, AsyncGenerator, Dict, List, Optional, cast
 
-from tiktoken import encoding_for_model
-from dotenv import load_dotenv
-from pydantic import BaseModel
 from openai import AsyncOpenAI, AsyncStream
-from openai.types.chat.chat_completion_message_param import ChatCompletionMessageParam
 from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
+from openai.types.chat.chat_completion_message_param import ChatCompletionMessageParam
+from pydantic import BaseModel
+from tiktoken import encoding_for_model
 
-load_dotenv()
+from codearkt.settings import settings
 
-BASE_URL = os.getenv("BASE_URL", "https://openrouter.ai/api/v1")
-API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-HTTP_REFERRER = os.getenv("HTTP_REFERRER", "https://github.com/IlyaGusev/codearkt/")
-X_TITLE = os.getenv("X_TITLE", "CodeArkt")
 HEADERS = {
-    "HTTP-Referer": HTTP_REFERRER,
-    "X-Title": X_TITLE,
+    "HTTP-Referer": settings.HTTP_REFERRER,
+    "X-Title": settings.X_TITLE,
 }
 
 
@@ -59,12 +53,15 @@ class LLM:
     def __init__(
         self,
         model_name: str,
-        base_url: str = BASE_URL,
-        api_key: str = API_KEY,
+        base_url: str = settings.BASE_URL,
+        api_key: str = settings.OPENROUTER_API_KEY,
         max_history_tokens: int = 200000,
         num_retries: int = 3,
         **kwargs: Any,
     ) -> None:
+        assert (
+            api_key
+        ), "LLM API key is required. Please set OPENROUTER_API_KEY environment variable."
         self._model_name = model_name
         self._base_url = base_url
         self._api_key = api_key

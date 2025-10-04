@@ -1,38 +1,32 @@
 import asyncio
-import time
+import contextlib
 import logging
-from pathlib import Path
+import time
 from datetime import datetime
-from typing import Dict, Any, Optional, List, Callable, AsyncGenerator
+from pathlib import Path
+from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 
 import uvicorn
-from fastmcp import FastMCP, settings as fastmcp_settings
-from fastmcp.client.transports import (
-    SSETransport,
-    StreamableHttpTransport,
-    ClientTransport,
-)
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
+from fastmcp import FastMCP
+from fastmcp import settings as fastmcp_settings
+from fastmcp.client.transports import ClientTransport, SSETransport, StreamableHttpTransport
 from fastmcp.mcp_config import (
     MCPConfig,
     RemoteMCPServer,
     StdioMCPServer,
     infer_transport_type_from_url,
 )
-from fastapi import FastAPI
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sse_starlette.sse import AppStatus
-import contextlib
 
 from codearkt.codeact import CodeActAgent
-from codearkt.llm import ChatMessage
 from codearkt.event_bus import AgentEventBus
+from codearkt.llm import ChatMessage
 from codearkt.metrics import TokenUsageStore
-from codearkt.util import get_unique_id, find_free_port, append_jsonl_atomic
-
-DEFAULT_SERVER_HOST = "0.0.0.0"
-DEFAULT_SERVER_PORT = 5055
-PROXY_SSE_READ_TIMEOUT = 12 * 60 * 60
+from codearkt.settings import settings
+from codearkt.util import append_jsonl_atomic, find_free_port, get_unique_id
 
 
 fastmcp_settings.stateless_http = True
@@ -182,14 +176,14 @@ def get_mcp_app(
                         server.url,
                         headers=server.headers,
                         auth=server.auth,
-                        sse_read_timeout=PROXY_SSE_READ_TIMEOUT,
+                        sse_read_timeout=settings.PROXY_SSE_READ_TIMEOUT,
                     )
                 else:
                     transport = StreamableHttpTransport(
                         server.url,
                         headers=server.headers,
                         auth=server.auth,
-                        sse_read_timeout=PROXY_SSE_READ_TIMEOUT,
+                        sse_read_timeout=settings.PROXY_SSE_READ_TIMEOUT,
                     )
             elif isinstance(server, StdioMCPServer):
                 transport = server.to_transport()
@@ -213,8 +207,8 @@ def get_main_app(
     event_bus: AgentEventBus,
     token_usage_store: Optional[TokenUsageStore] = None,
     mcp_config: Optional[Dict[str, Any]] = None,
-    server_host: str = DEFAULT_SERVER_HOST,
-    server_port: int = DEFAULT_SERVER_PORT,
+    server_host: str = settings.DEFAULT_SERVER_HOST,
+    server_port: int = settings.DEFAULT_SERVER_PORT,
     additional_tools: Optional[Dict[str, Callable[..., Any]]] = None,
     add_mcp_server_prefixes: bool = True,
 ) -> FastAPI:
@@ -259,8 +253,8 @@ async def _shutdown_server(
 def run_server(
     agent: CodeActAgent,
     mcp_config: Dict[str, Any],
-    host: str = DEFAULT_SERVER_HOST,
-    port: int = DEFAULT_SERVER_PORT,
+    host: str = settings.DEFAULT_SERVER_HOST,
+    port: int = settings.DEFAULT_SERVER_PORT,
     additional_tools: Optional[Dict[str, Callable[..., Any]]] = None,
     add_mcp_server_prefixes: bool = True,
 ) -> None:
@@ -292,7 +286,7 @@ async def _start_temporary_server(
 ) -> tuple[uvicorn.Server, asyncio.Task[None], str, int, TokenUsageStore]:
     event_bus = AgentEventBus()
     token_usage_store = TokenUsageStore()
-    host = DEFAULT_SERVER_HOST
+    host = settings.DEFAULT_SERVER_HOST
     port = find_free_port()
     assert port is not None, "No free port found for temporary server"
 

@@ -8,7 +8,7 @@ from codearkt.event_bus import EventType
 from codearkt.llm import ChatMessage
 from codearkt.util import get_unique_id
 from codearkt.client import query_agent, stop_agent
-from codearkt.server import DEFAULT_SERVER_PORT, DEFAULT_SERVER_HOST
+from codearkt.settings import settings
 from codearkt.prompt_storage import (
     DEFAULT_BEGIN_PLAN_SEQUENCE,
     DEFAULT_END_PLAN_SEQUENCE,
@@ -135,7 +135,9 @@ class GradioUI:
 
 
 def main(
-    share: bool = False, host: str = DEFAULT_SERVER_HOST, port: int = DEFAULT_SERVER_PORT
+    share: bool = False,
+    host: str = settings.DEFAULT_SERVER_HOST,
+    port: int = settings.DEFAULT_SERVER_PORT,
 ) -> None:
     GradioUI().run(share=share, host=host, port=port)
 

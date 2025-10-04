@@ -5,7 +5,7 @@ from pydantic import ValidationError
 
 from codearkt.event_bus import AgentEvent
 from codearkt.llm import ChatMessage
-from codearkt.server import DEFAULT_SERVER_HOST, DEFAULT_SERVER_PORT
+from codearkt.settings import settings
 
 HEADERS = {"Content-Type": "application/json", "Accept": "application/x-ndjson"}
 
@@ -14,8 +14,8 @@ def query_agent(
     history: List[ChatMessage],
     *,
     session_id: str | None = None,
-    host: str = DEFAULT_SERVER_HOST,
-    port: int = DEFAULT_SERVER_PORT,
+    host: str = settings.DEFAULT_SERVER_HOST,
+    port: int = settings.DEFAULT_SERVER_PORT,
     agent_name: str = "manager",
 ) -> Iterator[AgentEvent]:
     base_url = f"{host}:{port}"
@@ -40,7 +40,9 @@ def query_agent(
 
 
 def stop_agent(
-    session_id: str, host: str = DEFAULT_SERVER_HOST, port: int = DEFAULT_SERVER_PORT
+    session_id: str,
+    host: str = settings.DEFAULT_SERVER_HOST,
+    port: int = settings.DEFAULT_SERVER_PORT,
 ) -> bool:
     base_url = f"{host}:{port}"
     if not base_url.startswith("http"):

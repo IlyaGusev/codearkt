@@ -1,11 +1,11 @@
 import asyncio
-from typing import Any, Dict, Optional, AsyncGenerator, List
-from enum import StrEnum
 from collections import defaultdict
+from enum import StrEnum
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from pydantic import BaseModel
 
-STREAM_TIMEOUT = 24 * 60 * 60  # 24 hours
+from codearkt.settings import settings
 
 
 class EventType(StrEnum):
@@ -72,7 +72,9 @@ class AgentEventBus:
         is_root_agent = True
         while not is_agent_end or not is_root_agent:
             try:
-                event = await asyncio.wait_for(queue.get(), timeout=STREAM_TIMEOUT)
+                event = await asyncio.wait_for(
+                    queue.get(), timeout=settings.EVENT_BUS_STREAM_TIMEOUT
+                )
                 if not event:
                     continue
                 yield event

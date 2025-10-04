@@ -11,12 +11,12 @@ from codearkt.event_bus import EventType
 from codearkt.llm import ChatMessage
 from codearkt.util import get_unique_id
 from codearkt.client import query_agent, stop_agent
-from codearkt.server import DEFAULT_SERVER_PORT, DEFAULT_SERVER_HOST
+from codearkt.settings import settings
 
 
 def main(
-    host: str = DEFAULT_SERVER_HOST,
-    port: int = DEFAULT_SERVER_PORT,
+    host: str = settings.DEFAULT_SERVER_HOST,
+    port: int = settings.DEFAULT_SERVER_PORT,
     root_agent_name: str = "manager",
 ) -> None:
     real_messages: List[ChatMessage] = []
