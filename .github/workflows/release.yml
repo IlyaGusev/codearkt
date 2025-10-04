@@ -86,7 +86,7 @@ jobs:
         with:
           tag_name: ${{ steps.version_check.outputs.current_version }}
           name: Release ${{ steps.version_check.outputs.current_version }}
-          body: {{ steps.changelog.outputs.release_body }}
+          body: ${{ steps.changelog.outputs.release_body }}
           draft: false
           prerelease: false
         env:
