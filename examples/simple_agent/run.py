@@ -1,10 +1,7 @@
-from dotenv import load_dotenv
-
 from codearkt.server import run_server
 from codearkt.codeact import CodeActAgent
 from codearkt.llm import LLM
 
-load_dotenv()
 
 MCP_CONFIG = {
     "mcpServers": {"academia": {"url": "http://0.0.0.0:5056/mcp", "transport": "streamable-http"}}

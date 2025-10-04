@@ -1,13 +1,13 @@
-import uuid
 import json
-import socket
 import random
 import shutil
+import socket
+import uuid
 from contextlib import suppress
-from typing import Optional, Dict, Any, List
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-MAX_LENGTH_TRUNCATE_CONTENT: int = 20000
+from codearkt.settings import settings
 
 
 def get_unique_id() -> str:
@@ -29,7 +29,7 @@ def find_free_port() -> Optional[int]:
 
 def truncate_content(
     content: str,
-    max_length: int = MAX_LENGTH_TRUNCATE_CONTENT,
+    max_length: int = settings.MAX_LENGTH_TRUNCATE_CONTENT,
     prefix_only: bool = False,
     suffix_only: bool = False,
     target_line: Optional[int] = None,

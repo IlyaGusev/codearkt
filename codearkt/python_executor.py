@@ -1,36 +1,27 @@
-import textwrap
-import time
-import os
 import asyncio
 import atexit
-import traceback
-from typing import Optional, Any, List, Dict, Sequence
+import textwrap
 import threading
+import time
+import traceback
+from typing import Any, Dict, List, Optional, Sequence
 
 from docker import from_env as docker_from_env
-from docker.models.containers import Container
 from docker.client import DockerClient
 from docker.errors import DockerException, ImageNotFound, NotFound
+from docker.models.containers import Container
 from docker.models.networks import Network
+from httpx import AsyncClient, HTTPError, Limits, RequestError, TimeoutException
 from pydantic import BaseModel, ValidationError
-from httpx import AsyncClient, HTTPError, TimeoutException, Limits, RequestError
 
 from codearkt.llm import ChatMessage
+from codearkt.settings import settings
 from codearkt.tools import fetch_tools
-from codearkt.util import get_unique_id, truncate_content, is_correct_json
+from codearkt.util import get_unique_id, is_correct_json, truncate_content
 
 
-SHA_DIGEST: str = "sha256:8866223c75d644f51d0da5f12a8400ae4aa62262d5331b0e69dc7a3576055873"
-DEFAULT_IMAGE: str = f"phoenix120/codearkt_http@{SHA_DIGEST}"
-IMAGE: str = os.getenv("CODEARKT_EXECUTOR_IMAGE", DEFAULT_IMAGE)
-MEM_LIMIT: str = "1g"
-CPU_QUOTA: int = 50000
-CPU_PERIOD: int = 100000
-EXEC_TIMEOUT: int = 24 * 60 * 60  # 24 hours
-CLEANUP_TIMEOUT: int = 10
-PIDS_LIMIT: int = 256
-NET_NAME: str = "codearkt_sandbox_net"
-EXTERNAL_URL_ENV = os.getenv("CODEARKT_EXECUTOR_URL")
+IMAGE: str = settings.EXECUTOR_IMAGE
+EXTERNAL_URL_ENV = settings.CODEARKT_EXECUTOR_URL
 
 _CLIENT: Optional[DockerClient] = None
 _CONTAINER: Optional[Container] = None
@@ -40,11 +31,11 @@ _DOCKER_LOCK: threading.Lock = threading.Lock()
 def cleanup_container() -> None:
     global _CONTAINER
 
-    acquired: bool = _DOCKER_LOCK.acquire(timeout=CLEANUP_TIMEOUT)
+    acquired: bool = _DOCKER_LOCK.acquire(timeout=settings.DOCKER_CLEANUP_TIMEOUT)
     try:
         if acquired and _CONTAINER:
             try:
-                _CONTAINER.stop(timeout=CLEANUP_TIMEOUT)
+                _CONTAINER.stop(timeout=settings.DOCKER_CLEANUP_TIMEOUT)
                 _CONTAINER.remove(force=True)
                 _CONTAINER = None
             except DockerException:
@@ -117,13 +108,11 @@ def init_docker() -> DockerClient:
 
 
 def run_network(client: DockerClient) -> Network:
+    name = settings.DOCKER_NET_NAME
     try:
-        net = client.networks.get(NET_NAME)
+        net = client.networks.get(name)
     except NotFound:
-        net = client.networks.create(
-            NET_NAME,
-            driver="bridge",
-        )
+        net = client.networks.create(name, driver="bridge")
     return net
 
 
@@ -133,10 +122,10 @@ def run_container(client: DockerClient, net_name: str) -> Container:
         detach=True,
         auto_remove=True,
         ports={"8000/tcp": None},
-        mem_limit=MEM_LIMIT,
-        cpu_period=CPU_PERIOD,
-        cpu_quota=CPU_QUOTA,
-        pids_limit=PIDS_LIMIT,
+        mem_limit=settings.DOCKER_MEM_LIMIT,
+        cpu_period=settings.DOCKER_CPU_PERIOD,
+        cpu_quota=settings.DOCKER_CPU_QUOTA,
+        pids_limit=settings.DOCKER_PIDS_LIMIT,
         cap_drop=["ALL"],
         read_only=True,
         tmpfs={"/tmp": "rw,size=64m", "/run": "rw,size=16m"},
@@ -223,7 +212,9 @@ class PythonExecutor:
 
         try:
             async with AsyncClient(limits=Limits(keepalive_expiry=0)) as client:
-                resp = await client.post(f"{self.url}/exec", json=payload, timeout=EXEC_TIMEOUT)
+                resp = await client.post(
+                    f"{self.url}/exec", json=payload, timeout=settings.EXEC_TIMEOUT
+                )
                 resp.raise_for_status()
                 out = resp.json()
                 result: ExecResult = ExecResult.model_validate(out)
@@ -253,7 +244,7 @@ class PythonExecutor:
         try:
             async with AsyncClient(limits=Limits(keepalive_expiry=0)) as client:
                 response = await client.post(
-                    f"{self.url}/cleanup", json=payload, timeout=CLEANUP_TIMEOUT
+                    f"{self.url}/cleanup", json=payload, timeout=settings.DOCKER_CLEANUP_TIMEOUT
                 )
                 response.raise_for_status()
         except (HTTPError, TimeoutException):

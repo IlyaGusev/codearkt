@@ -23,11 +23,7 @@ from codearkt.prompt_storage import (
 from codearkt.python_executor import PythonExecutor
 from codearkt.tools import fetch_tools
 from codearkt.util import get_unique_id, truncate_content
-
-AGENT_TOOL_PREFIX = "agent__"
-DEFAULT_MAX_ITERATIONS = 20
-PLANNING_LAST_N = 50
-PLANNING_CONTENT_MAX_LENGTH = 4000
+from codearkt.settings import settings
 
 
 def extract_code_from_text(
@@ -62,7 +58,7 @@ class CodeActAgent:
         llm: LLM,
         tool_names: Sequence[str] = tuple(),
         prompts: Optional[PromptStorage] = None,
-        max_iterations: int = DEFAULT_MAX_ITERATIONS,
+        max_iterations: int = settings.DEFAULT_MAX_ITERATIONS,
         verbosity_level: int = logging.ERROR,
         planning_interval: Optional[int] = None,
         managed_agents: Optional[List[Self]] = None,
@@ -80,7 +76,7 @@ class CodeActAgent:
 
         if self.managed_agents:
             for agent in self.managed_agents:
-                agent_tool_name = AGENT_TOOL_PREFIX + agent.name
+                agent_tool_name = settings.AGENT_TOOL_PREFIX + agent.name
                 if agent_tool_name not in self.tool_names:
                     self.tool_names.append(agent_tool_name)
 
@@ -455,8 +451,8 @@ class CodeActAgent:
     def _process_messages_for_planning(
         self,
         messages: ChatMessages,
-        last_n: int = PLANNING_LAST_N,
-        content_max_length: int = PLANNING_CONTENT_MAX_LENGTH,
+        last_n: int = settings.PLANNING_LAST_N,
+        content_max_length: int = settings.PLANNING_CONTENT_MAX_LENGTH,
     ) -> str:
         messages = copy.deepcopy(messages)
 

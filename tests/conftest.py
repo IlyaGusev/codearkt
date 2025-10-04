@@ -9,16 +9,15 @@ from contextlib import suppress
 import pytest
 from pydantic import BaseModel, Field
 import uvicorn
-from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from academia_mcp.tools import arxiv_download, arxiv_search, document_qa, show_image
 
 from codearkt.llm import LLM
 from codearkt.codeact import CodeActAgent
-from codearkt.server import get_agent_app, DEFAULT_SERVER_HOST, reset_app_status
+from codearkt.server import get_agent_app, reset_app_status
 from codearkt.event_bus import AgentEventBus
+from codearkt.settings import settings
 
-load_dotenv()
 for name in ("httpx", "mcp", "openai", "uvicorn"):
     logging.getLogger(name).setLevel(logging.WARNING)
 
@@ -90,7 +89,7 @@ def structured_arxiv_download(paper_id: str) -> StructuredDownloadResult:
 
 
 class MCPServerTest:
-    def __init__(self, port: int, host: str = DEFAULT_SERVER_HOST) -> None:
+    def __init__(self, port: int, host: str = settings.DEFAULT_SERVER_HOST) -> None:
         self.port = port
         self.host = host
         self._thread: threading.Thread | None = None
