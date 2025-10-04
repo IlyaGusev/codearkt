@@ -1,6 +1,6 @@
 [config]
-model = "anthropic/claude-sonnet-4.5"
-fallback_models = ["deepseek/deepseek-v3.2-exp"]
+model = "openrouter/anthropic/claude-sonnet-4.5"
+fallback_models = ["openrouter/deepseek/deepseek-v3.2-exp"]
 ai_timeout = 300
 custom_model_max_tokens = 150000
 
