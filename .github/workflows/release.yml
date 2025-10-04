@@ -70,7 +70,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag -a "${VERSION}" -m "Release ${VERSION}"
-          git push origin "v${VERSION}"
+          git push origin "${VERSION}"
       - name: Build package with UV
         if: steps.version_check.outputs.version_changed == 'true'
         run: |
