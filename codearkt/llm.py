@@ -59,6 +59,9 @@ class LLM:
         num_retries: int = 3,
         **kwargs: Any,
     ) -> None:
+        assert (
+            api_key
+        ), "LLM API key is required. Please set OPENROUTER_API_KEY environment variable."
         self._model_name = model_name
         self._base_url = base_url
         self._api_key = api_key

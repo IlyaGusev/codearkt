@@ -1,5 +1,6 @@
 from typing import Optional
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -43,6 +44,13 @@ class Settings(BaseSettings):
         env_prefix="",
         extra="ignore",
     )
+
+    @field_validator("OPENROUTER_API_KEY")  # type: ignore
+    @classmethod
+    def validate_api_key(cls, v: str) -> str:
+        if not v or v.strip() == "":
+            raise ValueError("OPENROUTER_API_KEY must not be empty")
+        return v
 
 
 settings = Settings()
