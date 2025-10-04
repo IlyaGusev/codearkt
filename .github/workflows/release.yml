@@ -80,3 +80,14 @@ jobs:
         if: steps.version_check.outputs.version_changed == 'true'
         run: |
           uv publish
+      - name: Create GitHub Release
+        if: steps.version_check.outputs.version_changed == 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version_check.outputs.current_version }}
+          name: Release ${{ steps.version_check.outputs.current_version }}
+          body: {{ steps.changelog.outputs.release_body }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
