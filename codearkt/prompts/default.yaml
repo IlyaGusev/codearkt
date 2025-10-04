@@ -12,26 +12,22 @@ system: |
   You have access to a list of tools (Python functions) that you can call with code.
   Work iteratively through cycles of:
   - Thought: Explain your reasoning and tool selection
-  - Code: Write a single Python code block starting with 'Code:' and ending with '<end_code>'
-  - Observation: Review outputs from print() statements or the last expressions
+  - Code: Write a single Python code block within <execute> ... </execute> tags
+  - Observation: Review outputs from print() statements or last expressions
   Continue these cycles until the task is complete.
 
   Rules:
-  - Put all tool calls in the code section. Do not call tools in any other way.
+  - Put all tool calls in the <execute> ... </execute> section. Do not call tools in any other way.
   - Rely only on tool results. Your own knowledge might be incorrect.
-  - Use the following format for tool calls: 'Code:\n```py' [code] '```<end_code>', where '\n' is a newline character.
-  - Start a tool call with 'Code:\n```py' and end with '```<end_code>', where '\n' is a newline character.
-  - Add a newline after the 'Code:' and before the code block.
-  - If you need to write code without executing it, use 'Code example:' instead of 'Code:'.
   - Avoid explicitly importing tools as they are already imported as globals.
-  - When you have the final answer, write 'Final answer:' and then the answer.
-  - The final answer should always start with 'Final answer:'.
+  - Avoid generating observation blocks, those will be added after executing the code.
+  - When you have the final answer, use <final_answer> ... </final_answer> tags.
 
   Code guidelines:
   - Use only defined variables.
   - Avoid duplicate tool calls with the same parameters.
   - Avoid naming variables after tools.
-  - Do not try to directly access files inside "Code" blocks. Use tools to access them instead.
+  - Avoid directly accessing files inside execution blocks. Instead, use tools to access them.
   - Remember that state persists between executions.
 
 
@@ -41,49 +37,43 @@ system: |
 
   Your message:
   I will now conduct a web search with a query that includes "VQ-VAE paper".
-
-  Code:
-  ```py
+  <execute>
   results = web_search("VQ-VAE paper")
   print(results)
-  ```<end_code>
+  </execute>
 
   Observation:
   ...RAQ-VAE: Rate-Adaptive Vector-Quantized Variational...
 
   Your message:
   General search did not yield any relevant results, so I'll try to find the mentions of VQ-VAE in ArXiv.
-
-  Code:
-  ```py
-  papers = arxiv_search(query='abs:"VQ-VAE" OR abs:"Vector Quantized Variational Autoencoders"')
-  print(papers)
-  ```<end_code>
+  <execute>
+  arxiv_search(query='abs:"VQ-VAE" OR abs:"Vector Quantized Variational Autoencoders"')
+  </execute>
 
   Observation:
   {"total_count": 122, ...}
 
   Your message:
   There are many papers! Let's try to find the earliest mention. For that we set sort_by="submittedDate" and sort_order="ascending".
-
-  Code:
-  ```py
-  papers = arxiv_search(
+  <execute>
+  arxiv_search(
       query='abs:"VQ-VAE" OR abs:"Vector Quantized Variational Autoencoders"',
       limit=1,
       sort_by="submittedDate",
       sort_order="ascending",
       include_abstracts=True
   )
-  print(papers)
-  ```<end_code>
+  </execute>
 
   Observation:
   {"total_count": 122, ..., "results": [{"index": 0, "id": "1711.00937v2", "title": "Neural Discrete Representation Learning", "summary": "...Our model, the Vector Quantised-Variational AutoEncoder (VQ-VAE), differs from VAEs in two key ways..."}, ...]}
 
   Your message:
-  Final answer: "Neural Discrete Representation Learning (1711.00937v2)".
+  <final_answer>
+  "Neural Discrete Representation Learning (1711.00937v2)"
   It is the first paper that mentions VQ-VAE.
+  </final_answer>
 
 
   ## Example of using (notional) managed agents
@@ -92,19 +82,18 @@ system: |
 
   Your message:
   I will ask the librarian agent to find the paper.
-
-  Code:
-  ```py
-  results = agent__librarian("Which paper introduced Vector Quantized Variational Autoencoders (VQ-VAE)?")
-  print(results)
-  ```<end_code>
+  <execute>
+  agent__librarian("Which paper introduced Vector Quantized Variational Autoencoders (VQ-VAE)?")
+  </execute>
 
   Observation:
   {"title": "Neural Discrete Representation Learning", "summary": "...Our model, the Vector Quantised-Variational AutoEncoder (VQ-VAE), differs from VAEs in two key ways..."}
 
   Your message:
-  Final answer: "Neural Discrete Representation Learning (1711.00937v2)".
+  <final_answer>
+  "Neural Discrete Representation Learning (1711.00937v2)"
   It is the first paper that mentions VQ-VAE.
+  </final_answer>
 
 
   ## Tools
@@ -149,7 +138,7 @@ plan: |
   - Has less than 6 steps
   - Uses available tools, inputs, and facts
   - Solves task completely
-  - Ends with an '<end_plan>' tag
+  - Starts with <plan> tag and ends with </plan> tag
   Keep steps essential, sequential, and high-level. Start with the most generic tools. For instance, with web_search.
 
   ## Tools
@@ -170,13 +159,5 @@ plan_suffix: |
 
 no_code_action: |
   No code block or final answer was provided.
-  The code block should start with 'Code:\n```py' and end with '```<end_code>', where "\n" is a newline.
-  The final answer should start with 'Final answer:'.
-
-end_code_sequence: <end_code>
-end_plan_sequence: <end_plan>
-stop_sequences:
-  - <end_code>
-  - <end_plan>
-  - "Observation:"
-  - "Calling tools:"
+  The code block should be within '<execute> ... </execute>' tags.
+  The final answer should be within '<final_answer> ... </final_answer>' tags.

@@ -1,24 +1,28 @@
-import re
 import asyncio
 import copy
 import logging
+import re
 import traceback
 from contextlib import suppress
-from textwrap import dedent
 from datetime import datetime
-from typing import List, Self, Optional, Sequence
-
+from textwrap import dedent
+from typing import List, Optional, Self, Sequence
 
 from mcp import Tool
 
+from codearkt.event_bus import AgentEventBus, EventType
+from codearkt.llm import LLM, ChatMessage, ChatMessages
+from codearkt.metrics import TokenUsageStore
+from codearkt.prompt_storage import (
+    DEFAULT_BEGIN_CODE_SEQUENCE,
+    DEFAULT_END_CODE_SEQUENCE,
+    DEFAULT_BEGIN_FINAL_ANSWER_SEQUENCE,
+    DEFAULT_END_FINAL_ANSWER_SEQUENCE,
+    PromptStorage,
+)
 from codearkt.python_executor import PythonExecutor
 from codearkt.tools import fetch_tools
-from codearkt.event_bus import AgentEventBus, EventType
-from codearkt.llm import LLM, ChatMessages, ChatMessage
 from codearkt.util import get_unique_id, truncate_content
-from codearkt.metrics import TokenUsageStore
-from codearkt.prompt_storage import PromptStorage
-
 
 AGENT_TOOL_PREFIX = "agent__"
 DEFAULT_MAX_ITERATIONS = 20
@@ -26,9 +30,25 @@ PLANNING_LAST_N = 50
 PLANNING_CONTENT_MAX_LENGTH = 4000
 
 
-def extract_code_from_text(text: str) -> str | None:
-    pattern = r"[Cc]ode[\*]*\:[\*]*\s*\n*```(?:py|python)?\s*\n(.*?)\n```"
+def extract_code_from_text(
+    text: str,
+    begin_code_sequence: str = DEFAULT_BEGIN_CODE_SEQUENCE,
+    end_code_sequence: str = DEFAULT_END_CODE_SEQUENCE,
+) -> str | None:
+    pattern = rf"{begin_code_sequence}(.*?){end_code_sequence}"
     matches = re.findall(pattern, text, re.DOTALL)
+    if matches:
+        return "\n\n".join(match.strip() for match in matches)
+    return None
+
+
+def extract_final_answer_from_text(
+    content: str,
+    begin_final_answer_sequence: str = DEFAULT_BEGIN_FINAL_ANSWER_SEQUENCE,
+    end_final_answer_sequence: str = DEFAULT_END_FINAL_ANSWER_SEQUENCE,
+) -> str | None:
+    pattern = rf"{begin_final_answer_sequence}(.*?){end_final_answer_sequence}"
+    matches = re.findall(pattern, content, re.DOTALL)
     if matches:
         return "\n\n".join(match.strip() for match in matches)
     return None
@@ -227,12 +247,13 @@ class CodeActAgent:
         self,
         messages: ChatMessages,
         session_id: str,
-        stop: List[str],
+        excluded_stop_sequences: List[str],
+        included_stop_sequences: List[str],
         event_bus: AgentEventBus | None = None,
         token_usage_store: TokenUsageStore | None = None,
         event_type: EventType = EventType.OUTPUT,
     ) -> str:
-        output_stream = self.llm.astream(messages=messages, stop=stop)
+        output_stream = self.llm.astream(messages=messages, stop=excluded_stop_sequences)
 
         output_text = ""
         last_usage = None
@@ -243,7 +264,8 @@ class CodeActAgent:
 
                 # Ignore everything after the stop sequence.
                 # Can't just break because of the usage tracking.
-                if any(ss in output_text for ss in stop):
+                all_stop_sequences = excluded_stop_sequences + included_stop_sequences
+                if any(ss in output_text for ss in all_stop_sequences):
                     continue
 
                 delta = event.choices[0].delta
@@ -257,6 +279,18 @@ class CodeActAgent:
         finally:
             with suppress(Exception):
                 await output_stream.aclose()
+
+        for excluded_stop_sequence in excluded_stop_sequences:
+            if excluded_stop_sequence in output_text:
+                output_text = output_text.split(excluded_stop_sequence)[0]
+                break
+
+        for included_stop_sequence in included_stop_sequences:
+            if included_stop_sequence in output_text:
+                output_text = output_text.split(included_stop_sequence)[0]
+                output_text += included_stop_sequence
+                break
+
         await self._publish_event(event_bus, session_id, event_type, "\n")
         if token_usage_store and last_usage:
             await token_usage_store.add(
@@ -285,7 +319,8 @@ class CodeActAgent:
             output_text = await self._run_llm(
                 messages=messages,
                 session_id=session_id,
-                stop=self.prompts.stop_sequences,
+                excluded_stop_sequences=self.prompts.excluded_stop_sequences,
+                included_stop_sequences=self.prompts.included_stop_sequences,
                 event_bus=event_bus,
                 token_usage_store=token_usage_store,
             )
@@ -297,36 +332,38 @@ class CodeActAgent:
             self._log(error_text, run_id=run_id, session_id=session_id, level=logging.ERROR)
             return []
 
-        if (
-            output_text
-            and output_text.strip().endswith("```")
-            and not output_text.strip().endswith(self.prompts.end_code_sequence)
-        ):
-            chunk = self.prompts.end_code_sequence + "\n"
-            output_text += chunk
-
-        for stop_sequence in self.prompts.stop_sequences:
-            if stop_sequence in output_text:
-                output_text = output_text.split(stop_sequence)[0].strip()
-                if stop_sequence == self.prompts.end_code_sequence:
-                    output_text += stop_sequence
-                break
+        # Fix unclosed begin code sequence.
+        begin_code = self.prompts.begin_code_sequence
+        end_code = self.prompts.end_code_sequence
+        if begin_code in output_text:
+            last_begin = output_text.rfind(begin_code)
+            text_after_begin = output_text[last_begin:]
+            if end_code not in text_after_begin:
+                chunk = end_code + "\n"
+                await self._publish_event(event_bus, session_id, EventType.OUTPUT, chunk)
+                output_text += chunk
 
         self._log(
             f"Step output: {output_text}", run_id=run_id, session_id=session_id, level=logging.DEBUG
         )
         self._log("LLM generated outputs!", run_id=run_id, session_id=session_id)
 
-        # Code detection
-        code_action = extract_code_from_text(output_text)
+        # Code action detection
+        code_action = extract_code_from_text(output_text, begin_code, end_code)
 
         # No code action
         new_messages = []
         if code_action is None:
             self._log("No tool calls detected", run_id=run_id, session_id=session_id)
             new_messages.append(ChatMessage(role="assistant", content=output_text))
-            if self._is_final_answer(output_text):
+            begin_final_answer = self.prompts.begin_final_answer_sequence
+            end_final_answer = self.prompts.end_final_answer_sequence
+            final_answer = extract_final_answer_from_text(
+                output_text, begin_final_answer, end_final_answer
+            )
+            if final_answer is not None:
                 self._log("Final answer found!", run_id=run_id, session_id=session_id)
+                new_messages[-1].content = final_answer
                 return new_messages
             assert self.prompts.no_code_action is not None
             no_code_action_prompt = self.prompts.no_code_action.render()
@@ -380,13 +417,6 @@ class CodeActAgent:
             )
         return new_messages
 
-    def _is_final_answer(self, content: str) -> bool:
-        code_action = extract_code_from_text(content)
-        assert code_action is None
-        content = content.lower()
-        final_answer_keywords = ("final answer:", "**final answer**:")
-        return any(keyword in content for keyword in final_answer_keywords)
-
     async def _handle_final_message(
         self,
         messages: ChatMessages,
@@ -408,7 +438,8 @@ class CodeActAgent:
         output_text = await self._run_llm(
             messages=input_messages,
             session_id=session_id,
-            stop=self.prompts.stop_sequences,
+            excluded_stop_sequences=self.prompts.excluded_stop_sequences,
+            included_stop_sequences=self.prompts.included_stop_sequences,
             event_bus=event_bus,
             token_usage_store=token_usage_store,
         )
@@ -489,7 +520,8 @@ class CodeActAgent:
             output_text += await self._run_llm(
                 messages=input_messages,
                 session_id=session_id,
-                stop=[self.prompts.end_plan_sequence],
+                excluded_stop_sequences=[self.prompts.end_plan_sequence],
+                included_stop_sequences=[self.prompts.end_plan_sequence],
                 event_bus=event_bus,
                 token_usage_store=token_usage_store,
                 event_type=EventType.PLANNING_OUTPUT,
@@ -497,7 +529,9 @@ class CodeActAgent:
 
             if self.prompts.end_plan_sequence in output_text:
                 output_text = output_text.split(self.prompts.end_plan_sequence)[0].strip()
-                output_text += self.prompts.end_plan_sequence
+
+            # Always append the end plan sequence.
+            output_text += self.prompts.end_plan_sequence
 
             plan_suffix = self.prompts.plan_suffix.render().strip()
             return [

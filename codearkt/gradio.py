@@ -1,5 +1,4 @@
-import tempfile
-import os
+from collections import defaultdict
 from typing import Iterator, List, Dict, Any
 
 import gradio as gr
@@ -10,8 +9,26 @@ from codearkt.llm import ChatMessage
 from codearkt.util import get_unique_id
 from codearkt.client import query_agent, stop_agent
 from codearkt.server import DEFAULT_SERVER_PORT, DEFAULT_SERVER_HOST
+from codearkt.prompt_storage import (
+    DEFAULT_BEGIN_PLAN_SEQUENCE,
+    DEFAULT_END_PLAN_SEQUENCE,
+    DEFAULT_BEGIN_CODE_SEQUENCE,
+    DEFAULT_END_CODE_SEQUENCE,
+    DEFAULT_BEGIN_FINAL_ANSWER_SEQUENCE,
+    DEFAULT_END_FINAL_ANSWER_SEQUENCE,
+)
 
 CODE_TITLE = "Code execution result"
+
+
+def escape_code_blocks(text: str) -> str:
+    text = text.replace(DEFAULT_BEGIN_CODE_SEQUENCE, "```python ")
+    text = text.replace(DEFAULT_END_CODE_SEQUENCE, "\n```")
+    text = text.replace(DEFAULT_BEGIN_PLAN_SEQUENCE, "")
+    text = text.replace(DEFAULT_END_PLAN_SEQUENCE, "")
+    text = text.replace(DEFAULT_BEGIN_FINAL_ANSWER_SEQUENCE, "**Final answer**:\n")
+    text = text.replace(DEFAULT_END_FINAL_ANSWER_SEQUENCE, "")
+    return text
 
 
 def bot(
@@ -27,6 +44,7 @@ def bot(
     real_messages.append(ChatMessage(role="user", content=message))
     events = query_agent(real_messages, session_id=session_id, host=host, port=port)
     agent_names: List[str] = []
+    raw_contents: Dict[int, str] = defaultdict(str)
     history.append({"role": "assistant", "content": ""})
     for event in events:
         session_id = event.session_id or session_id
@@ -48,27 +66,33 @@ def bot(
             )
         elif event.event_type == EventType.AGENT_START:
             agent_names.append(event.agent_name)
+            content = f'\n**Starting "{event.agent_name}" agent...**\n\n'
             history.append(
                 {
                     "role": "assistant",
-                    "content": f'\n**Starting "{event.agent_name}" agent...**\n\n',
+                    "content": content,
                 }
             )
+            raw_contents[len(history) - 1] = content
         elif event.event_type == EventType.AGENT_END:
             last_agent_name = agent_names.pop()
             assert last_agent_name == event.agent_name
+            content = f"\n**Agent {event.agent_name} completed the task!**\n\n"
             history.append(
                 {
                     "role": "assistant",
-                    "content": f"\n**Agent {event.agent_name} completed the task!**\n\n",
+                    "content": content,
                 }
             )
+            raw_contents[len(history) - 1] = content
         elif event.event_type == EventType.OUTPUT or event.event_type == EventType.PLANNING_OUTPUT:
             if prev_message_title == CODE_TITLE:
                 history.append({"role": "assistant", "content": ""})
 
             assert event.content is not None
-            history[-1]["content"] += event.content
+            current_idx = len(history) - 1
+            raw_contents[current_idx] += event.content
+            history[-1]["content"] = escape_code_blocks(raw_contents[current_idx])
 
             if is_root_agent and event.event_type == EventType.OUTPUT:
                 if real_messages[-1].role == "assistant" and not real_messages[-1].tool_calls:
@@ -94,25 +118,6 @@ class GradioUI:
                 additional_inputs=[session_id_state, real_messages_state, host_state, port_state],
                 additional_outputs=[session_id_state, real_messages_state],
                 save_history=True,
-            )
-
-            download_button = gr.DownloadButton(
-                label="💾 Download conversation",
-                variant="secondary",
-            )
-
-            def _download_conversation(real_messages: List[ChatMessage]) -> str:
-                lines = [f"{msg.role}: {msg.content}" for msg in real_messages]
-                text = "\n\n".join(lines)
-
-                fd, path = tempfile.mkstemp(prefix="conversation_", suffix=".txt")
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    f.write(text)
-
-                return path
-
-            download_button.click(
-                _download_conversation, inputs=[real_messages_state], outputs=download_button
             )
 
             def _on_stop(session_id: str | None) -> str | None:

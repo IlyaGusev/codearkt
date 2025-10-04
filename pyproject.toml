@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "codearkt"
-version = "1.8.19"
+version = "1.8.20"
 description = "CodeAct implementation with Docker and MCP"
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -46,6 +46,7 @@ dev = [
     "flake8==7.2.0",
     "pytest>=8.4.1",
     "pytest-asyncio>=1.1.0",
+    "isort>=6.1.0",
 ]
 
 [project.urls]
