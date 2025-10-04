@@ -1,0 +1,6 @@
+model = "anthropic/claude-sonnet-4.5"
+fallback_models = ["deepseek/deepseek-v3.2-exp"]
+custom_model_max_tokens=150000
+
+[pr_reviewer]
+extra_instructions = "Focus on security issues and code quality. Be concise."

@@ -1,0 +1,29 @@
+name: PR Agent
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, review_requested]
+  issue_comment:
+    types: [created, edited]
+jobs:
+  pr_agent_job:
+    if: ${{ github.event.sender.type != 'Bot' }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+      contents: write
+    name: Run pr agent on every pull request, respond to user comments
+    steps:
+      - name: Checkout PR code
+        uses: actions/checkout@v3
+      - name: PR Agent action step
+        id: pragent
+        uses: qodo-ai/pr-agent@v0.30
+        env:
+          GITHUB_TOKEN: ${{ secrets.CI_TOKEN }}
+          OPENROUTER__KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          github_action_config.auto_review: "true"
+          github_action_config.auto_describe: "true"
+          github_action_config.auto_improve: "true"
+          config.ai_timeout: "120"
+          github_action_config.pr_actions: '["opened", "reopened", "ready_for_review", "review_requested"]'
