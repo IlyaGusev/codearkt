@@ -37,7 +37,6 @@ system: |
 
   Your message:
   I will now conduct a web search with a query that includes "VQ-VAE paper".
-
   <execute>
   results = web_search("VQ-VAE paper")
   print(results)
@@ -48,7 +47,6 @@ system: |
 
   Your message:
   General search did not yield any relevant results, so I'll try to find the mentions of VQ-VAE in ArXiv.
-
   <execute>
   arxiv_search(query='abs:"VQ-VAE" OR abs:"Vector Quantized Variational Autoencoders"')
   </execute>
@@ -58,7 +56,6 @@ system: |
 
   Your message:
   There are many papers! Let's try to find the earliest mention. For that we set sort_by="submittedDate" and sort_order="ascending".
-
   <execute>
   arxiv_search(
       query='abs:"VQ-VAE" OR abs:"Vector Quantized Variational Autoencoders"',
@@ -85,7 +82,6 @@ system: |
 
   Your message:
   I will ask the librarian agent to find the paper.
-
   <execute>
   agent__librarian("Which paper introduced Vector Quantized Variational Autoencoders (VQ-VAE)?")
   </execute>
