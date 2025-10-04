@@ -10,7 +10,10 @@ DEFAULT_BEGIN_CODE_SEQUENCE = "<execute>"
 DEFAULT_END_CODE_SEQUENCE = "</execute>"
 DEFAULT_BEGIN_PLAN_SEQUENCE = "<plan>"
 DEFAULT_END_PLAN_SEQUENCE = "</plan>"
-DEFAULT_STOP_SEQUENCES = ["Observation:", "Calling tools:"]
+DEFAULT_BEGIN_FINAL_ANSWER_SEQUENCE = "<final_answer>"
+DEFAULT_END_FINAL_ANSWER_SEQUENCE = "</final_answer>"
+DEFAULT_EXCLUDED_STOP_SEQUENCES = ["Observation:", "Calling tools:"]
+DEFAULT_INCLUDED_STOP_SEQUENCES = [DEFAULT_END_CODE_SEQUENCE]
 
 
 def _schema_to_md_internal(schema: Dict[str, Any]) -> str:
@@ -117,11 +120,19 @@ class PromptStorage:
     plan: Optional[Template] = None
     plan_prefix: Optional[Template] = None
     plan_suffix: Optional[Template] = None
+
     begin_code_sequence: str = DEFAULT_BEGIN_CODE_SEQUENCE
     end_code_sequence: str = DEFAULT_END_CODE_SEQUENCE
     begin_plan_sequence: str = DEFAULT_BEGIN_PLAN_SEQUENCE
     end_plan_sequence: str = DEFAULT_END_PLAN_SEQUENCE
-    stop_sequences: List[str] = field(default_factory=lambda: DEFAULT_STOP_SEQUENCES)
+    begin_final_answer_sequence: str = DEFAULT_BEGIN_FINAL_ANSWER_SEQUENCE
+    end_final_answer_sequence: str = DEFAULT_END_FINAL_ANSWER_SEQUENCE
+    excluded_stop_sequences: List[str] = field(
+        default_factory=lambda: DEFAULT_EXCLUDED_STOP_SEQUENCES
+    )
+    included_stop_sequences: List[str] = field(
+        default_factory=lambda: DEFAULT_INCLUDED_STOP_SEQUENCES
+    )
 
     @classmethod
     def load(cls, path: str | Path) -> Self:
@@ -141,7 +152,8 @@ class PromptStorage:
             else:
                 wrapped_templates[key] = value
         obj = cls(**wrapped_templates)
-        obj.stop_sequences = [s.strip() for s in obj.stop_sequences]
+        obj.excluded_stop_sequences = [s.strip() for s in obj.excluded_stop_sequences]
+        obj.included_stop_sequences = [s.strip() for s in obj.included_stop_sequences]
         return obj
 
     @classmethod

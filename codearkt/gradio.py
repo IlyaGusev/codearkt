@@ -14,6 +14,8 @@ from codearkt.prompt_storage import (
     DEFAULT_END_PLAN_SEQUENCE,
     DEFAULT_BEGIN_CODE_SEQUENCE,
     DEFAULT_END_CODE_SEQUENCE,
+    DEFAULT_BEGIN_FINAL_ANSWER_SEQUENCE,
+    DEFAULT_END_FINAL_ANSWER_SEQUENCE,
 )
 
 CODE_TITLE = "Code execution result"
@@ -24,8 +26,8 @@ def escape_code_blocks(text: str) -> str:
     text = text.replace(DEFAULT_END_CODE_SEQUENCE, "\n```")
     text = text.replace(DEFAULT_BEGIN_PLAN_SEQUENCE, "")
     text = text.replace(DEFAULT_END_PLAN_SEQUENCE, "")
-    text = text.replace("<final_answer>", "**Final answer**:\n")
-    text = text.replace("</final_answer>", "")
+    text = text.replace(DEFAULT_BEGIN_FINAL_ANSWER_SEQUENCE, "**Final answer**:\n")
+    text = text.replace(DEFAULT_END_FINAL_ANSWER_SEQUENCE, "")
     return text
 
 
@@ -64,21 +66,25 @@ def bot(
             )
         elif event.event_type == EventType.AGENT_START:
             agent_names.append(event.agent_name)
+            content = f'\n**Starting "{event.agent_name}" agent...**\n\n'
             history.append(
                 {
                     "role": "assistant",
-                    "content": f'\n**Starting "{event.agent_name}" agent...**\n\n',
+                    "content": content,
                 }
             )
+            raw_contents[len(history) - 1] = content
         elif event.event_type == EventType.AGENT_END:
             last_agent_name = agent_names.pop()
             assert last_agent_name == event.agent_name
+            content = f"\n**Agent {event.agent_name} completed the task!**\n\n"
             history.append(
                 {
                     "role": "assistant",
-                    "content": f"\n**Agent {event.agent_name} completed the task!**\n\n",
+                    "content": content,
                 }
             )
+            raw_contents[len(history) - 1] = content
         elif event.event_type == EventType.OUTPUT or event.event_type == EventType.PLANNING_OUTPUT:
             if prev_message_title == CODE_TITLE:
                 history.append({"role": "assistant", "content": ""})

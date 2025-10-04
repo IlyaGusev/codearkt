@@ -20,6 +20,7 @@ system: |
   - Put all tool calls in the <execute> ... </execute> section. Do not call tools in any other way.
   - Rely only on tool results. Your own knowledge might be incorrect.
   - Avoid explicitly importing tools as they are already imported as globals.
+  - Avoid generating observation blocks, those will be added after executing the code.
   - When you have the final answer, use <final_answer> ... </final_answer> tags.
 
   Code guidelines:
