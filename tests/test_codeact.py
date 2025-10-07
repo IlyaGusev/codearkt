@@ -7,7 +7,7 @@ from datetime import datetime
 from academia_mcp.tools import arxiv_search
 from academia_mcp.tools import arxiv_download
 
-from codearkt.codeact import CodeActAgent, extract_code_from_text
+from codearkt.codeact import CodeActAgent
 from codearkt.llm import ChatMessage, LLM
 from codearkt.event_bus import AgentEventBus, EventType
 from codearkt.util import get_unique_id
@@ -18,57 +18,45 @@ from tests.conftest import MCPServerTest, get_nested_agent
 
 
 class TestExtractCodeFromText:
-    def test_extract_code_from_text_basic(self) -> None:
+    def test_extract_code_from_text_basic(self, dummy_agent: CodeActAgent) -> None:
         text = '<execute>\nprint("Hello, world!")\n</execute>'
-        code = extract_code_from_text(dedent(text))
+        code = dummy_agent._extract_code_from_text(dedent(text))
         assert code == 'print("Hello, world!")', code
 
-    def test_extract_code_from_text_line_breaks(self) -> None:
+    def test_extract_code_from_text_line_breaks(self, dummy_agent: CodeActAgent) -> None:
         text = '<execute>\n\n\nprint("Hello, world!")\n</execute>'
-        code = extract_code_from_text(dedent(text))
+        code = dummy_agent._extract_code_from_text(dedent(text))
         assert code == 'print("Hello, world!")', code
 
-    def test_extract_code_from_text_code_example(self) -> None:
+    def test_extract_code_from_text_code_example(self, dummy_agent: CodeActAgent) -> None:
         text = 'Code example:\n```python\nprint("Hello, world!")\n```'
-        code = extract_code_from_text(dedent(text))
+        code = dummy_agent._extract_code_from_text(dedent(text))
         assert code is None
 
-    def test_extract_code_from_text_multiple(self) -> None:
+    def test_extract_code_from_text_multiple(self, dummy_agent: CodeActAgent) -> None:
         text = "<execute>\na = 1\n</execute>\n<execute>\nb = 2\n</execute>"
-        code = extract_code_from_text(dedent(text))
+        code = dummy_agent._extract_code_from_text(dedent(text))
         assert code == "a = 1\n\nb = 2", code
 
-    def test_extract_code_from_text_code_unclosed(self) -> None:
+    def test_extract_code_from_text_code_unclosed(self, dummy_agent: CodeActAgent) -> None:
         text = '<execute>\nprint("Hello, world!")\n'
-        code = extract_code_from_text(dedent(text))
+        code = dummy_agent._extract_code_from_text(dedent(text))
         assert code is None
 
 
 class TestCodeActAgent:
-    async def test_codeact_no_tools(self, deepseek: LLM) -> None:
-        agent = CodeActAgent(
-            name="agent",
-            description="Just agent",
-            llm=deepseek,
-            tool_names=[],
-        )
-        result = await agent.ainvoke(
+    async def test_codeact_no_tools(self, dummy_agent: CodeActAgent) -> None:
+        result = await dummy_agent.ainvoke(
             [ChatMessage(role="user", content="What is 432412421249 * 4332144219?")],
             session_id=get_unique_id(),
         )
         str_result = str(result).replace(",", "").replace(".", "").replace(" ", "")
         assert "1873272970937648109531" in str_result, result
 
-    async def test_codeact_token_usage(self, deepseek: LLM) -> None:
-        agent = CodeActAgent(
-            name="agent",
-            description="Just agent",
-            llm=deepseek,
-            tool_names=[],
-        )
+    async def test_codeact_token_usage(self, dummy_agent: CodeActAgent) -> None:
         session_id = get_unique_id()
         token_usage_store = TokenUsageStore()
-        await agent.ainvoke(
+        await dummy_agent.ainvoke(
             [ChatMessage(role="user", content="What is 432412421249 * 4332144219?")],
             session_id=session_id,
             token_usage_store=token_usage_store,

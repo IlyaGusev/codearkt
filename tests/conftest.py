@@ -52,6 +52,17 @@ def test_image_url() -> str:
     return "https://arxiv.org/html/2409.06820v4/extracted/6347978/pingpong_v3.drawio.png"
 
 
+@pytest.fixture
+def dummy_agent() -> CodeActAgent:
+    llm = LLM(model_name="deepseek/deepseek-chat-v3-0324")
+    return CodeActAgent(
+        name="agent",
+        description="Just agent",
+        llm=llm,
+        tool_names=[],
+    )
+
+
 def get_nested_agent(verbosity_level: int = logging.ERROR) -> CodeActAgent:
     return CodeActAgent(
         name="nested_agent",
