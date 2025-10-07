@@ -3,6 +3,7 @@ import copy
 import logging
 import re
 import traceback
+from dataclasses import dataclass
 from contextlib import suppress
 from datetime import datetime
 from textwrap import dedent
@@ -13,41 +14,19 @@ from mcp import Tool
 from codearkt.event_bus import AgentEventBus, EventType
 from codearkt.llm import LLM, ChatMessage, ChatMessages
 from codearkt.metrics import TokenUsageStore
-from codearkt.prompt_storage import (
-    DEFAULT_BEGIN_CODE_SEQUENCE,
-    DEFAULT_END_CODE_SEQUENCE,
-    DEFAULT_BEGIN_FINAL_ANSWER_SEQUENCE,
-    DEFAULT_END_FINAL_ANSWER_SEQUENCE,
-    PromptStorage,
-)
+from codearkt.prompt_storage import PromptStorage
 from codearkt.python_executor import PythonExecutor
+from codearkt.settings import settings
 from codearkt.tools import fetch_tools
 from codearkt.util import get_unique_id, truncate_content
-from codearkt.settings import settings
 
 
-def extract_code_from_text(
-    text: str,
-    begin_code_sequence: str = DEFAULT_BEGIN_CODE_SEQUENCE,
-    end_code_sequence: str = DEFAULT_END_CODE_SEQUENCE,
-) -> str | None:
-    pattern = rf"{begin_code_sequence}(.*?){end_code_sequence}"
-    matches = re.findall(pattern, text, re.DOTALL)
-    if matches:
-        return "\n\n".join(match.strip() for match in matches)
-    return None
-
-
-def extract_final_answer_from_text(
-    content: str,
-    begin_final_answer_sequence: str = DEFAULT_BEGIN_FINAL_ANSWER_SEQUENCE,
-    end_final_answer_sequence: str = DEFAULT_END_FINAL_ANSWER_SEQUENCE,
-) -> str | None:
-    pattern = rf"{begin_final_answer_sequence}(.*?){end_final_answer_sequence}"
-    matches = re.findall(pattern, content, re.DOTALL)
-    if matches:
-        return "\n\n".join(match.strip() for match in matches)
-    return None
+@dataclass
+class RunContext:
+    session_id: str
+    run_id: str
+    event_bus: Optional[AgentEventBus] = None
+    token_usage_store: Optional[TokenUsageStore] = None
 
 
 class CodeActAgent:
@@ -102,10 +81,15 @@ class CodeActAgent:
         server_port: int | None = None,
     ) -> str:
         messages = copy.deepcopy(messages)
-
         run_id = get_unique_id()
-        await self._publish_event(event_bus, session_id, EventType.AGENT_START)
-        self._log(f"Starting agent {self.name}", run_id=run_id, session_id=session_id)
+        run_context = RunContext(
+            session_id=session_id,
+            run_id=run_id,
+            event_bus=event_bus,
+            token_usage_store=token_usage_store,
+        )
+        await self._publish_event(run_context, event_type=EventType.AGENT_START)
+        self._log(run_context, f"Starting agent {self.name}")
 
         python_executor = None
         try:
@@ -116,19 +100,12 @@ class CodeActAgent:
                 tools_server_port=server_port,
                 tools_server_host=server_host,
             )
-            self._log("Python interpreter started", run_id=run_id, session_id=session_id)
-            self._log(
-                f"Host: {server_host}, port: {server_port}",
-                run_id=run_id,
-                session_id=session_id,
-            )
+            self._log(run_context, "Python interpreter started")
+            self._log(run_context, f"Host: {server_host}, port: {server_port}")
 
             tools = await self._get_tools(server_host=server_host, server_port=server_port)
-            self._log(
-                f"Fetched tools: {[tool.name for tool in tools]}",
-                run_id=run_id,
-                session_id=session_id,
-            )
+            self._log(run_context, f"Fetched tools: {[tool.name for tool in tools]}")
+
             current_date = datetime.now().strftime("%Y-%m-%d")
             system_prompt = self.prompts.system.render(tools=tools, current_date=current_date)
 
@@ -136,85 +113,47 @@ class CodeActAgent:
                 messages = [ChatMessage(role="system", content=system_prompt)] + messages
 
             for step_number in range(1, self.max_iterations + 1):
-                # Optional planning step.
-                if self.planning_interval is not None and (
-                    step_number == 1 or (step_number - 1) % self.planning_interval == 0
-                ):
-                    self._log(
-                        f"Planning step {step_number} started",
-                        run_id=run_id,
-                        session_id=session_id,
-                    )
+                if self.planning_interval and (step_number - 1) % self.planning_interval == 0:
+                    self._log(run_context, f"Planning step {step_number} started")
                     new_messages = await self._run_planning_step(
                         messages=messages,
                         tools=tools,
-                        run_id=run_id,
-                        session_id=session_id,
-                        event_bus=event_bus,
-                        token_usage_store=token_usage_store,
+                        run_context=run_context,
                     )
                     messages.extend(new_messages)
-                    self._log(
-                        f"Planning step {step_number} completed",
-                        run_id=run_id,
-                        session_id=session_id,
-                    )
+                    self._log(run_context, f"Planning step {step_number} completed")
 
-                # Main step.
-                self._log(
-                    f"Step {step_number} started",
-                    run_id=run_id,
-                    session_id=session_id,
-                )
+                self._log(run_context, f"Step {step_number} started")
                 new_messages = await self._step(
-                    messages,
+                    messages=messages,
                     python_executor=python_executor,
-                    session_id=session_id,
-                    run_id=run_id,
-                    event_bus=event_bus,
-                    token_usage_store=token_usage_store,
+                    run_context=run_context,
                     step_number=step_number,
                 )
                 messages.extend(new_messages)
-                self._log(
-                    f"Step {step_number} completed",
-                    run_id=run_id,
-                    session_id=session_id,
-                )
+                self._log(run_context, f"Step {step_number} completed")
                 if messages[-1].role == "assistant":
                     break
             else:
-                # Final step.
                 new_messages = await self._handle_final_message(
-                    messages,
-                    session_id=session_id,
-                    run_id=run_id,
-                    event_bus=event_bus,
-                    token_usage_store=token_usage_store,
+                    messages=messages,
+                    run_context=run_context,
                 )
                 messages.extend(new_messages)
-                self._log(
-                    "Final step completed",
-                    run_id=run_id,
-                    session_id=session_id,
-                )
+                self._log(run_context, "Final step completed")
 
         except Exception as exc:
             error = traceback.format_exc()
-            self._log(
-                f"Agent {self.name} failed with error: {error}",
-                run_id=run_id,
-                session_id=session_id,
-                level=logging.ERROR,
-            )
+            self._log_error(run_context, f"Agent {self.name} failed with error: {error}")
             raise exc
+
         finally:
-            # Cleanup.
             if python_executor:
                 await python_executor.cleanup()
-            await self._publish_event(event_bus, session_id, EventType.AGENT_END)
+            await self._publish_event(run_context, EventType.AGENT_END)
+            self._log(run_context, "Clean up completed")
 
-        self._log(f"Agent {self.name} completed successfully", run_id=run_id, session_id=session_id)
+        self._log(run_context, f"Agent {self.name} completed successfully")
         return str(messages[-1].content)
 
     async def _get_tools(
@@ -242,11 +181,9 @@ class CodeActAgent:
     async def _run_llm(
         self,
         messages: ChatMessages,
-        session_id: str,
+        run_context: RunContext,
         excluded_stop_sequences: List[str],
         included_stop_sequences: List[str],
-        event_bus: AgentEventBus | None = None,
-        token_usage_store: TokenUsageStore | None = None,
         event_type: EventType = EventType.OUTPUT,
     ) -> str:
         output_stream = self.llm.astream(messages=messages, stop=excluded_stop_sequences)
@@ -271,7 +208,7 @@ class CodeActAgent:
                     chunk = "\n".join([str(item) for item in delta.content])
 
                 output_text += chunk
-                await self._publish_event(event_bus, session_id, event_type, chunk)
+                await self._publish_event(run_context, event_type, chunk)
         finally:
             with suppress(Exception):
                 await output_stream.aclose()
@@ -287,48 +224,34 @@ class CodeActAgent:
                 output_text += included_stop_sequence
                 break
 
-        await self._publish_event(event_bus, session_id, event_type, "\n")
-        if token_usage_store and last_usage:
-            await token_usage_store.add(
-                session_id, last_usage.prompt_tokens, last_usage.completion_tokens
+        await self._publish_event(run_context, event_type, "\n")
+        if run_context.token_usage_store and last_usage:
+            await run_context.token_usage_store.add(
+                run_context.session_id,
+                last_usage.prompt_tokens,
+                last_usage.completion_tokens,
             )
         return output_text
 
-    async def _step(
-        self,
-        messages: ChatMessages,
-        python_executor: PythonExecutor,
-        session_id: str,
-        run_id: str,
-        event_bus: AgentEventBus | None = None,
-        token_usage_store: TokenUsageStore | None = None,
-        step_number: int | None = None,
-    ) -> ChatMessages:
-        # Passed step_number for telemetry only.
-        _ = step_number
-        self._log(
-            f"Step inputs: {messages}", run_id=run_id, session_id=session_id, level=logging.DEBUG
-        )
-        self._log("LLM generates outputs...", run_id=run_id, session_id=session_id)
-        output_text = ""
-        try:
-            output_text = await self._run_llm(
-                messages=messages,
-                session_id=session_id,
-                excluded_stop_sequences=self.prompts.excluded_stop_sequences,
-                included_stop_sequences=self.prompts.included_stop_sequences,
-                event_bus=event_bus,
-                token_usage_store=token_usage_store,
-            )
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            exception = traceback.format_exc()
-            error_text = f"LLM failed with error: {exception}. Please try again."
-            self._log(error_text, run_id=run_id, session_id=session_id, level=logging.ERROR)
-            return []
+    def _extract_code_from_text(self, text: str) -> str | None:
+        begin_code_sequence = self.prompts.begin_code_sequence
+        end_code_sequence = self.prompts.end_code_sequence
+        pattern = rf"{begin_code_sequence}(.*?){end_code_sequence}"
+        matches = re.findall(pattern, text, re.DOTALL)
+        if matches:
+            return "\n\n".join(match.strip() for match in matches)
+        return None
 
-        # Fix unclosed begin code sequence.
+    def _extract_final_answer_from_text(self, content: str) -> str | None:
+        begin_final_answer_sequence = self.prompts.begin_final_answer_sequence
+        end_final_answer_sequence = self.prompts.end_final_answer_sequence
+        pattern = rf"{begin_final_answer_sequence}(.*?){end_final_answer_sequence}"
+        matches = re.findall(pattern, content, re.DOTALL)
+        if matches:
+            return "\n\n".join(match.strip() for match in matches)
+        return None
+
+    async def _ensure_end_code_sequence(self, output_text: str, run_context: RunContext) -> str:
         begin_code = self.prompts.begin_code_sequence
         end_code = self.prompts.end_code_sequence
         if begin_code in output_text:
@@ -336,115 +259,104 @@ class CodeActAgent:
             text_after_begin = output_text[last_begin:]
             if end_code not in text_after_begin:
                 chunk = end_code + "\n"
-                await self._publish_event(event_bus, session_id, EventType.OUTPUT, chunk)
+                await self._publish_event(run_context, EventType.OUTPUT, chunk)
                 output_text += chunk
+        return output_text
 
-        self._log(
-            f"Step output: {output_text}", run_id=run_id, session_id=session_id, level=logging.DEBUG
-        )
-        self._log("LLM generated outputs!", run_id=run_id, session_id=session_id)
-
-        # Code action detection
-        code_action = extract_code_from_text(output_text, begin_code, end_code)
-
-        # No code action
-        new_messages = []
-        if code_action is None:
-            self._log("No tool calls detected", run_id=run_id, session_id=session_id)
-            new_messages.append(ChatMessage(role="assistant", content=output_text))
-            begin_final_answer = self.prompts.begin_final_answer_sequence
-            end_final_answer = self.prompts.end_final_answer_sequence
-            final_answer = extract_final_answer_from_text(
-                output_text, begin_final_answer, end_final_answer
+    async def _step(
+        self,
+        messages: ChatMessages,
+        python_executor: PythonExecutor,
+        run_context: RunContext,
+        step_number: int,
+    ) -> ChatMessages:
+        self._log_debug(run_context, f"Step {step_number} inputs: {messages}")
+        self._log(run_context, "LLM generates outputs...")
+        output_text = ""
+        try:
+            output_text = await self._run_llm(
+                messages=messages,
+                run_context=run_context,
+                excluded_stop_sequences=self.prompts.excluded_stop_sequences,
+                included_stop_sequences=self.prompts.included_stop_sequences,
             )
-            if final_answer is not None:
-                self._log("Final answer found!", run_id=run_id, session_id=session_id)
-                new_messages[-1].content = final_answer
-                return new_messages
+            output_text = await self._ensure_end_code_sequence(
+                output_text=output_text, run_context=run_context
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            exception = traceback.format_exc()
+            error_text = f"LLM failed with error: {exception}. Please try again."
+            self._log_error(run_context, error_text)
+            return []
+
+        self._log_debug(run_context, f"Step output: {output_text}")
+        self._log(run_context, "LLM generated outputs!")
+
+        code_action = self._extract_code_from_text(output_text)
+        final_answer = self._extract_final_answer_from_text(output_text)
+        self._log_debug(run_context, f"Code action: {code_action}")
+        if final_answer is not None:
+            self._log_debug(run_context, f"Final answer: {final_answer}")
+
+        tool_call_message = ChatMessage(role="assistant", content=output_text)
+        new_messages = [tool_call_message]
+
+        if code_action is None and final_answer is None:
+            self._log(run_context, "No tool calls or final answer detected")
+            self._log_debug(run_context, f"Bad message: {output_text}")
             assert self.prompts.no_code_action is not None
             no_code_action_prompt = self.prompts.no_code_action.render()
             new_messages.append(ChatMessage(role="user", content=no_code_action_prompt))
-            self._log(
-                no_code_action_prompt,
-                run_id=run_id,
-                session_id=session_id,
-                level=logging.DEBUG,
-            )
             return new_messages
 
-        self._log(
-            f"Code action: {code_action}", run_id=run_id, session_id=session_id, level=logging.DEBUG
-        )
-        tool_call_message = ChatMessage(
-            role="assistant",
-            content=output_text,
-        )
-        new_messages.append(tool_call_message)
+        elif code_action is None and final_answer is not None:
+            self._log(run_context, "Final answer found!")
+            self._log_debug(run_context, f"Final answer: {final_answer}")
+            new_messages[-1].content = final_answer
+            return new_messages
 
-        # Execute code.
+        assert code_action is not None
         try:
-            self._log("Executing code...", run_id=run_id, session_id=session_id)
+            self._log(run_context, "Executing code...")
             code_result = await python_executor.ainvoke(code_action)
-            self._log(
-                f"Code result: {code_result}",
-                run_id=run_id,
-                session_id=session_id,
-                level=logging.DEBUG,
-            )
+            self._log_debug(run_context, f"Code result: {code_result}")
             code_result_message: ChatMessage = code_result.to_message()
             assert isinstance(code_result_message.content, list)
             new_messages.append(code_result_message)
             tool_output: str = str(code_result_message.content[0]["text"]) + "\n"
-            await self._publish_event(event_bus, session_id, EventType.TOOL_RESPONSE, tool_output)
-            self._log("Code was executed!", run_id=run_id, session_id=session_id)
+            await self._publish_event(run_context, EventType.TOOL_RESPONSE, tool_output)
+            self._log_debug(run_context, f"Tool output: {tool_output}")
+            self._log(run_context, "Code was executed!")
+
         except asyncio.CancelledError:
             raise
         except Exception:
             exception = traceback.format_exc()
             new_messages.append(ChatMessage(role="user", content=f"Error: {exception}"))
-            self._log(
-                f"Code error: {exception}",
-                run_id=run_id,
-                session_id=session_id,
-                level=logging.DEBUG,
-            )
-            await self._publish_event(
-                event_bus, session_id, EventType.TOOL_RESPONSE, f"Error: {exception}\n"
-            )
+            self._log_debug(run_context, f"Code error: {exception}")
+            await self._publish_event(run_context, EventType.TOOL_RESPONSE, f"Error: {exception}\n")
+
         return new_messages
 
     async def _handle_final_message(
         self,
         messages: ChatMessages,
-        session_id: str,
-        run_id: str,
-        event_bus: AgentEventBus | None = None,
-        token_usage_store: TokenUsageStore | None = None,
+        run_context: RunContext,
     ) -> ChatMessages:
         prompt: str = self.prompts.final.render()
         final_message = ChatMessage(role="user", content=prompt)
         input_messages = messages + [final_message]
-        self._log(
-            f"Final input messages: {input_messages}",
-            run_id=run_id,
-            session_id=session_id,
-            level=logging.DEBUG,
-        )
+        self._log_debug(run_context, f"Final input messages: {input_messages}")
 
         output_text = await self._run_llm(
             messages=input_messages,
-            session_id=session_id,
+            run_context=run_context,
             excluded_stop_sequences=self.prompts.excluded_stop_sequences,
             included_stop_sequences=self.prompts.included_stop_sequences,
-            event_bus=event_bus,
-            token_usage_store=token_usage_store,
         )
-        self._log(
-            f"Final message: {final_message}",
-            run_id=run_id,
-            session_id=session_id,
-            level=logging.DEBUG,
-        )
+        self._log_debug(run_context, f"Final message: {output_text}")
 
         return [ChatMessage(role="assistant", content=output_text)]
 
@@ -487,10 +399,7 @@ class CodeActAgent:
         self,
         messages: ChatMessages,
         tools: List[Tool],
-        run_id: str,
-        session_id: str,
-        event_bus: AgentEventBus | None = None,
-        token_usage_store: TokenUsageStore | None = None,
+        run_context: RunContext,
     ) -> ChatMessages:
         messages = copy.deepcopy(messages)
         assert self.prompts.plan is not None, "Planning prompt is not set, but planning is enabled"
@@ -510,16 +419,14 @@ class CodeActAgent:
 
         try:
             plan_prefix = self.prompts.plan_prefix.render().strip() + "\n\n"
-            await self._publish_event(event_bus, session_id, EventType.PLANNING_OUTPUT, plan_prefix)
+            await self._publish_event(run_context, EventType.PLANNING_OUTPUT, plan_prefix)
             output_text = plan_prefix
 
             output_text += await self._run_llm(
                 messages=input_messages,
-                session_id=session_id,
+                run_context=run_context,
                 excluded_stop_sequences=[self.prompts.end_plan_sequence],
                 included_stop_sequences=[self.prompts.end_plan_sequence],
-                event_bus=event_bus,
-                token_usage_store=token_usage_store,
                 event_type=EventType.PLANNING_OUTPUT,
             )
 
@@ -540,26 +447,33 @@ class CodeActAgent:
         except Exception:
             exception = traceback.format_exc()
             error_text = f"LLM failed with error: {exception}. Please try again."
-            self._log(error_text, run_id=run_id, session_id=session_id, level=logging.ERROR)
+            self._log_error(run_context, error_text)
             return []
 
     async def _publish_event(
         self,
-        event_bus: AgentEventBus | None,
-        session_id: str,
+        run_context: RunContext,
         event_type: EventType = EventType.OUTPUT,
         content: Optional[str] = None,
     ) -> None:
-        if not event_bus:
+        if not run_context.event_bus:
             return
-        await event_bus.publish_event(
-            session_id=session_id,
+        await run_context.event_bus.publish_event(
+            session_id=run_context.session_id,
             agent_name=self.name,
             event_type=event_type,
             content=content,
         )
 
-    def _log(self, message: str, run_id: str, session_id: str, level: int = logging.INFO) -> None:
+    def _log(self, run_context: RunContext, message: str, level: int = logging.INFO) -> None:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        session_id = run_context.session_id
+        run_id = run_context.run_id
         message = f"| {timestamp} | {session_id:<8} | {run_id:<8} | {message}"
         self.logger.log(level, message)
+
+    def _log_debug(self, run_context: RunContext, message: str) -> None:
+        self._log(run_context, message, level=logging.DEBUG)
+
+    def _log_error(self, run_context: RunContext, message: str) -> None:
+        self._log(run_context, message, level=logging.ERROR)
