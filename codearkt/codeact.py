@@ -318,6 +318,8 @@ class CodeActAgent:
             return new_messages
 
         assert code_action is not None
+        # Final answer might be not None, but we ignore it.
+
         try:
             self._log(run_context, "Executing code...")
             code_result = await python_executor.ainvoke(code_action)
