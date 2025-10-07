@@ -67,8 +67,9 @@ def stop_agent(
     payload = {"session_id": session_id}
     timeout = httpx.Timeout(connect=CONNECT_TIMEOUT, pool=None, read=None, write=None)
     try:
-        response = httpx.post(url, json=payload, timeout=timeout)
-        response.raise_for_status()
+        with httpx.Client(timeout=timeout) as client:
+            response = client.post(url, json=payload)
+            response.raise_for_status()
         return True
     except httpx.HTTPError:
         return False
