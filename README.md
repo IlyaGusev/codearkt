@@ -4,7 +4,10 @@
 [![CI](https://github.com/IlyaGusev/codearkt/actions/workflows/python.yml/badge.svg)](https://github.com/IlyaGusev/codearkt/actions/workflows/python.yml)
 [![License](https://img.shields.io/github/license/IlyaGusev/codearkt)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/IlyaGusev/codearkt?style=social)](https://github.com/IlyaGusev/codearkt/stargazers)
+[![CodeFactor](https://www.codefactor.io/repository/github/ilyagusev/codearkt/badge)](https://www.codefactor.io/repository/github/ilyagusev/codearkt)
+[![Codacy]](https://app.codacy.com/gh/IlyaGusev/codearkt?utm_source=github.com&utm_medium=referral&utm_content=IlyaGusev/codearkt&utm_campaign=Badge_Grade)
 [![DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/IlyaGusev/codearkt)
+
 
 **CodeArkt** is a battery-included implementation of the **CodeAct** framework with support for the multi-agent architecture. Ship autonomous agents that can reason, write, execute & iterate over code. All from a single Python package.
 
