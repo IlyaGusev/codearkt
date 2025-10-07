@@ -19,7 +19,6 @@ from codearkt.settings import settings
 from codearkt.tools import fetch_tools
 from codearkt.util import get_unique_id, is_correct_json, truncate_content
 
-
 IMAGE: str = settings.EXECUTOR_IMAGE
 EXTERNAL_URL_ENV = settings.CODEARKT_EXECUTOR_URL
 
@@ -28,7 +27,7 @@ _CONTAINER: Optional[Container] = None
 _DOCKER_LOCK: threading.Lock = threading.Lock()
 
 
-def cleanup_container() -> None:
+def _cleanup_container() -> None:
     global _CONTAINER
 
     acquired: bool = _DOCKER_LOCK.acquire(timeout=settings.DOCKER_CLEANUP_TIMEOUT)
@@ -45,7 +44,7 @@ def cleanup_container() -> None:
             _DOCKER_LOCK.release()
 
 
-atexit.register(cleanup_container)
+atexit.register(_cleanup_container)
 
 
 class ExecResult(BaseModel):  # type: ignore
@@ -62,12 +61,8 @@ class ExecResult(BaseModel):  # type: ignore
         if self.result:
             if isinstance(self.result, dict) and "image_base64" in self.result:
                 image_base64 = self.result["image_base64"]
-                image_content = [
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/png;base64,{image_base64}"},
-                    }
-                ]
+                full_url = f"data:image/png;base64,{image_base64}"
+                image_content = [{"type": "image_url", "image_url": {"url": full_url}}]
             if not image_content:
                 output += "Last expression:\n" + str(self.result) + "\n\n"
 
@@ -84,7 +79,7 @@ class ExecResult(BaseModel):  # type: ignore
         return ChatMessage(role="user", content=content)
 
 
-def init_docker() -> DockerClient:
+def _init_docker() -> DockerClient:
     client = docker_from_env()
     try:
         client.ping()  # type: ignore
@@ -107,7 +102,7 @@ def init_docker() -> DockerClient:
     return client
 
 
-def run_network(client: DockerClient) -> Network:
+def _run_network(client: DockerClient) -> Network:
     name = settings.DOCKER_NET_NAME
     try:
         net = client.networks.get(name)
@@ -116,7 +111,7 @@ def run_network(client: DockerClient) -> Network:
     return net
 
 
-def run_container(client: DockerClient, net_name: str) -> Container:
+def _run_container(client: DockerClient, net_name: str) -> Container:
     return client.containers.run(
         IMAGE,
         detach=True,
@@ -137,6 +132,13 @@ def run_container(client: DockerClient, net_name: str) -> Container:
     )
 
 
+def _get_url_from_container(container: Container) -> str:
+    container.reload()
+    ports = container.attrs["NetworkSettings"]["Ports"]
+    mapping = ports["8000/tcp"][0]
+    return f"http://localhost:{mapping['HostPort']}"
+
+
 class PythonExecutor:
     def __init__(
         self,
@@ -152,24 +154,21 @@ class PythonExecutor:
         self.interpreter_id: str = interpreter_id or get_unique_id()
         self.tool_names = tool_names
         self.tools_are_checked = False
+        self.is_ready = False
 
-        global _CLIENT, _CONTAINER
-        self.container = None
         if EXTERNAL_URL_ENV:
             self.url = EXTERNAL_URL_ENV.rstrip("/")
-        else:
-            with _DOCKER_LOCK:
-                if not _CLIENT:
-                    _CLIENT = init_docker()
-                client = _CLIENT
+            return
 
-                if not _CONTAINER:
-                    net = run_network(client)
-                    _CONTAINER = run_container(client, str(net.name))
-
-                self.container = _CONTAINER
-            self.url = self._get_url()
-        self.is_ready = False
+        global _CLIENT, _CONTAINER
+        with _DOCKER_LOCK:
+            if not _CLIENT:
+                _CLIENT = _init_docker()
+            client = _CLIENT
+            if not _CONTAINER:
+                net = _run_network(client)
+                _CONTAINER = _run_container(client, str(net.name))
+        self.url = _get_url_from_container(_CONTAINER)
 
     async def ainvoke(self, code: str) -> ExecResult:
         if not self.tools_are_checked:
@@ -230,17 +229,8 @@ class PythonExecutor:
                 result.result = truncate_content(result.result)
         return result
 
-    def _get_url(self) -> str:
-        assert self.container is not None
-        self.container.reload()
-        ports = self.container.attrs["NetworkSettings"]["Ports"]
-        mapping = ports["8000/tcp"][0]
-        return f"http://localhost:{mapping['HostPort']}"
-
     async def cleanup(self) -> None:
-        payload = {
-            "interpreter_id": self.interpreter_id,
-        }
+        payload = {"interpreter_id": self.interpreter_id}
         try:
             async with AsyncClient(limits=Limits(keepalive_expiry=0)) as client:
                 response = await client.post(
