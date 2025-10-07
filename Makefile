@@ -12,7 +12,7 @@ validate:
 	uv run mypy examples container codearkt tests --strict --explicit-package-bases
 
 test:
-	uv run pytest -s
+	uv run pytest -s --cov=codearkt --cov-branch --cov-report=xml
 
 publish:
 	uv build && uv publish
