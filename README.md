@@ -4,6 +4,7 @@
 [![CI](https://github.com/IlyaGusev/codearkt/actions/workflows/python.yml/badge.svg)](https://github.com/IlyaGusev/codearkt/actions/workflows/python.yml)
 [![License](https://img.shields.io/github/license/IlyaGusev/codearkt)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/IlyaGusev/codearkt?style=social)](https://github.com/IlyaGusev/codearkt/stargazers)
+[![codecov](https://codecov.io/github/IlyaGusev/codearkt/graph/badge.svg?token=ZRUTRK24CB)](https://codecov.io/github/IlyaGusev/codearkt)
 [![CodeFactor](https://www.codefactor.io/repository/github/ilyagusev/codearkt/badge)](https://www.codefactor.io/repository/github/ilyagusev/codearkt)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/4b47928a492f4f1ab48a375c82715152)](https://app.codacy.com/gh/IlyaGusev/codearkt/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 [![DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/IlyaGusev/codearkt)
