@@ -62,23 +62,33 @@ class AgentEventBus:
             self.queues[event.session_id] = asyncio.Queue()
         await self.queues[event.session_id].put(event)
 
+    async def _get_event(self, session_id: str) -> AgentEvent:
+        while True:
+            queue = self.queues.get(session_id)
+            if not queue:
+                raise RuntimeError(f"{session_id} is not tied to an agent anymore")
+            try:
+                event = await asyncio.wait_for(queue.get(), timeout=settings.FINISH_WAIT_TIMEOUT)
+                return event
+            except asyncio.TimeoutError:
+                continue
+
     async def stream_events(self, session_id: str) -> AsyncGenerator[AgentEvent, None]:
         if session_id not in self.queues:
             self.queues[session_id] = asyncio.Queue()
-        queue = self.queues[session_id]
         assert session_id in self.root_agent_name, f"Session {session_id} is not tied to an agent"
         root_agent_name = self.root_agent_name[session_id]
         is_agent_end = False
-        is_root_agent = True
-        while not is_agent_end or not is_root_agent:
+        is_root_agent = False
+        while not (is_agent_end and is_root_agent):
             try:
                 event = await asyncio.wait_for(
-                    queue.get(), timeout=settings.EVENT_BUS_STREAM_TIMEOUT
+                    self._get_event(session_id), timeout=settings.EVENT_BUS_STREAM_TIMEOUT
                 )
                 if not event:
                     continue
                 yield event
                 is_agent_end = event.event_type == EventType.AGENT_END
                 is_root_agent = event.agent_name == root_agent_name
-            except asyncio.TimeoutError:
+            except (asyncio.TimeoutError, RuntimeError):
                 break
