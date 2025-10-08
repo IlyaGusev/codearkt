@@ -1,5 +1,10 @@
-from codearkt.client import (_compose_agent_url, _compose_base_url,
-                             _compose_cancel_url, query_agent, stop_agent)
+from codearkt.client import (
+    _compose_agent_url,
+    _compose_base_url,
+    _compose_cancel_url,
+    query_agent,
+    stop_agent,
+)
 from codearkt.event_bus import EventType
 from codearkt.llm import ChatMessage
 from codearkt.util import get_unique_id
