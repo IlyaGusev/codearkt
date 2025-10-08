@@ -70,7 +70,7 @@ class AgentEventBus:
                 event = await asyncio.wait_for(queue.get(), timeout=settings.FINISH_WAIT_TIMEOUT)
                 return event
             except asyncio.TimeoutError:
-                pass
+                await asyncio.sleep(0.1)
             queue = self.queues.get(session_id)
         return AgentEvent(
             session_id=session_id,
