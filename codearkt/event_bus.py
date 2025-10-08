@@ -14,6 +14,7 @@ class EventType(StrEnum):
     PLANNING_OUTPUT = "planning_output"
     TOOL_RESPONSE = "observation"
     AGENT_END = "agent_end"
+    AGENT_INTERRUPTED = "agent_interrupted"
 
 
 class AgentEvent(BaseModel):  # type: ignore
@@ -62,23 +63,39 @@ class AgentEventBus:
             self.queues[event.session_id] = asyncio.Queue()
         await self.queues[event.session_id].put(event)
 
+    async def _get_event(self, session_id: str, root_agent_name: str) -> AgentEvent:
+        queue = self.queues.get(session_id)
+        while queue is not None:
+            try:
+                event = await asyncio.wait_for(queue.get(), timeout=settings.FINISH_WAIT_TIMEOUT)
+                return event
+            except asyncio.TimeoutError:
+                await asyncio.sleep(0.1)
+            queue = self.queues.get(session_id)
+        return AgentEvent(
+            session_id=session_id,
+            agent_name=root_agent_name,
+            event_type=EventType.AGENT_INTERRUPTED,
+        )
+
     async def stream_events(self, session_id: str) -> AsyncGenerator[AgentEvent, None]:
         if session_id not in self.queues:
             self.queues[session_id] = asyncio.Queue()
-        queue = self.queues[session_id]
         assert session_id in self.root_agent_name, f"Session {session_id} is not tied to an agent"
         root_agent_name = self.root_agent_name[session_id]
         is_agent_end = False
-        is_root_agent = True
-        while not is_agent_end or not is_root_agent:
+        is_root_agent = False
+        while not (is_agent_end and is_root_agent):
             try:
                 event = await asyncio.wait_for(
-                    queue.get(), timeout=settings.EVENT_BUS_STREAM_TIMEOUT
+                    self._get_event(session_id, root_agent_name),
+                    timeout=settings.EVENT_BUS_STREAM_TIMEOUT,
                 )
-                if not event:
-                    continue
                 yield event
-                is_agent_end = event.event_type == EventType.AGENT_END
+                is_agent_end = event.event_type in (
+                    EventType.AGENT_END,
+                    EventType.AGENT_INTERRUPTED,
+                )
                 is_root_agent = event.agent_name == root_agent_name
             except asyncio.TimeoutError:
                 break

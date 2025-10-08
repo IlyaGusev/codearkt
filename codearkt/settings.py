@@ -29,6 +29,7 @@ class Settings(BaseSettings):
 
     # Timeout settings
     EVENT_BUS_STREAM_TIMEOUT: int = 24 * 60 * 60
+    FINISH_WAIT_TIMEOUT: int = 10
     EXEC_TIMEOUT: int = 24 * 60 * 60
     PROXY_SSE_READ_TIMEOUT: int = 12 * 60 * 60
 
