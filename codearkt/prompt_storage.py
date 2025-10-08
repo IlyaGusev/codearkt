@@ -107,7 +107,7 @@ def schema_to_md(schema: Dict[str, Any]) -> str:
 
 
 def _create_jinja_env() -> Environment:
-    env = Environment()
+    env = Environment(autoescape=True)
     env.filters["schema_to_md"] = schema_to_md
     return env
 

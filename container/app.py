@@ -1,19 +1,19 @@
-import io
-import contextlib
-import traceback
-import asyncio
 import ast
+import asyncio
+import contextlib
+import io
 import linecache
-from typing import Dict, Any, Optional, List, Callable
-from functools import partial
-from collections import defaultdict
+import logging
 import multiprocessing
 import time
-import logging
+import traceback
+from collections import defaultdict
+from contextlib import suppress
+from functools import partial
+from typing import Any, Callable, Dict, List, Optional
 
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
-
 from tools import fetch_tools  # type: ignore
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -203,27 +203,19 @@ class Worker:
     def terminate(self) -> None:
         self._request_q.put(None)
         if self._process.is_alive():
-            try:
+            with suppress(Exception):
                 self._process.terminate()
-            except Exception:
-                pass
             self._process.join(timeout=2)
 
         if self._process.is_alive():
-            try:
+            with suppress(Exception):
                 self._process.kill()
-            except Exception:
-                pass
             self._process.join(timeout=1)
 
-        try:
+        with suppress(Exception):
             self._request_q.close()
-        except Exception:
-            pass
-        try:
+        with suppress(Exception):
             self._response_q.close()
-        except Exception:
-            pass
 
 
 def _get_worker(interpreter_id: str) -> Worker:
