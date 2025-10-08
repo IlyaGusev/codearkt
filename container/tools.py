@@ -1,18 +1,17 @@
-import os
-import anyio
 import asyncio
 import functools
-import httpx
+import os
 import traceback
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Dict, Callable, Any, Optional
 from functools import partial
+from typing import Any, Callable, Dict, List, Optional
 
-from pydantic import ValidationError
-
+import anyio
+import httpx
 from mcp import ClientSession, Tool
-from mcp.types import ContentBlock, CallToolResult
 from mcp.client.streamable_http import streamablehttp_client
+from mcp.types import CallToolResult, ContentBlock
+from pydantic import ValidationError
 
 AGENT_TIMEOUT = int(os.getenv("AGENT_TIMEOUT", 24 * 60 * 60))
 TOOL_TIMEOUT = int(os.getenv("TOOL_TIMEOUT", 12 * 60 * 60))
@@ -34,6 +33,31 @@ async def _message_handler(session: ClientSession, exc: Exception) -> None:
         session._task_group.cancel_scope.cancel()
 
 
+def _compose_arguments(tool_schema: Optional[Tool], *args: Any, **kwargs: Any) -> Dict[str, Any]:
+    arguments = dict(kwargs)
+    if not args:
+        return arguments
+    has_input_schema = (
+        tool_schema is not None
+        and hasattr(tool_schema, "inputSchema")
+        and tool_schema.inputSchema
+        and isinstance(tool_schema.inputSchema, dict)
+        and "properties" in tool_schema.inputSchema
+    )
+    if not has_input_schema:
+        return arguments
+
+    assert tool_schema
+    param_names = list(tool_schema.inputSchema["properties"].keys())
+    for i, arg in enumerate(args):
+        if i >= len(param_names):
+            break
+        param_name = param_names[i]
+        if param_name not in arguments:
+            arguments[param_name] = arg
+    return arguments
+
+
 async def _acall(tool: str, tool_server_port: int, *args: Any, **kwargs: Any) -> ToolReturnType:
     base_url = SERVER_URL_TEMPLATE.format(port=tool_server_port)
     async with streamablehttp_client(
@@ -48,22 +72,8 @@ async def _acall(tool: str, tool_server_port: int, *args: Any, **kwargs: Any) ->
         async with ClientSession(read_stream, write_stream) as session:
             await session.initialize()
             session._message_handler = partial(_message_handler, session)
-            arguments = dict(kwargs)
-            if args and tool in _tool_schemas:
-                tool_schema = _tool_schemas[tool]
-                if hasattr(tool_schema, "inputSchema") and tool_schema.inputSchema:
-                    if (
-                        isinstance(tool_schema.inputSchema, dict)
-                        and "properties" in tool_schema.inputSchema
-                    ):
-                        param_names = list(tool_schema.inputSchema["properties"].keys())
-                    else:
-                        param_names = []
-                    for i, arg in enumerate(args):
-                        if i < len(param_names):
-                            param_name = param_names[i]
-                            if param_name not in arguments:
-                                arguments[param_name] = arg
+            tool_schema = _tool_schemas.get(tool)
+            arguments = _compose_arguments(tool_schema, *args, **kwargs)
 
             result: CallToolResult = await session.call_tool(tool, arguments)
 
