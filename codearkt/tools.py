@@ -1,7 +1,7 @@
-from typing import List
-import httpx
 import traceback
+from typing import List
 
+import httpx
 from mcp import ClientSession, Tool
 from mcp.client.streamable_http import streamablehttp_client
 
@@ -27,13 +27,16 @@ async def fetch_tools(url: str) -> List[Tool]:
 
     try:
         async with httpx.AsyncClient(limits=httpx.Limits(keepalive_expiry=0)) as client:
-            resp = await client.get(url + "/agents/list")
-            resp.raise_for_status()
-            agent_cards = resp.json()
-            for card in agent_cards:
+            response = await client.get(url + "/a2a/agents")
+            response.raise_for_status()
+            agents_info = response.json()
+
+            for info in agents_info["agents"]:
+                card_response = await client.get(info["agent_card"])
+                card = card_response.json()
                 all_tools.append(
                     Tool(
-                        name="agent__" + card["name"],
+                        name="agent__" + info["name"],
                         description=card["description"],
                         inputSchema={
                             "type": "object",

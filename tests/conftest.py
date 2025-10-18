@@ -14,12 +14,13 @@ from academia_mcp.tools import arxiv_download, arxiv_search, document_qa, show_i
 
 from codearkt.llm import LLM
 from codearkt.codeact import CodeActAgent
-from codearkt.server import get_agent_app, reset_app_status
+from codearkt.server import reset_app_status
+from codearkt.app_a2a import get_a2a_app
 from codearkt.event_bus import AgentEventBus
 from codearkt.settings import settings
 
-for name in ("httpx", "mcp", "openai", "uvicorn"):
-    logging.getLogger(name).setLevel(logging.WARNING)
+# for name in ("httpx", "mcp", "openai", "uvicorn"):
+#     logging.getLogger(name).setLevel(logging.WARNING)
 
 
 @pytest.fixture
@@ -60,6 +61,7 @@ def dummy_agent() -> CodeActAgent:
         description="Just agent",
         llm=llm,
         tool_names=[],
+        verbosity_level=logging.DEBUG,
     )
 
 
@@ -115,13 +117,13 @@ class MCPServerTest:
         mcp_server.add_tool(show_image)
         mcp_server.add_tool(structured_arxiv_download, structured_output=True)
         app = mcp_server.streamable_http_app()
-        agent_app = get_agent_app(
+        agent_app = get_a2a_app(
             get_nested_agent(),
             server_host=host,
             server_port=self.port,
             event_bus=event_bus,
         )
-        app.mount("/agents", agent_app)
+        app.mount("/a2a", agent_app)
         config = uvicorn.Config(
             app,
             host=host,

@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     # Executor settings
     CODEARKT_EXECUTOR_URL: Optional[str] = None
     EXECUTOR_IMAGE: str = (
-        "phoenix120/codearkt_http@sha256:e00d11db4bc70918f61ebd53e19b0b2f382af6165346322af401b701118404e1"
+        "phoenix120/codearkt_http@sha256:78202ceff0788dca8c7f9997429a34b10e4fb22868a8fa71abfec8f74b7cac02"
     )
     DOCKER_MEM_LIMIT: str = "1g"
     DOCKER_CPU_QUOTA: int = 50000

@@ -21,12 +21,12 @@ def _compose_base_url(host: str, port: int) -> str:
 
 def _compose_agent_url(host: str, port: int, agent_name: str) -> str:
     base_url = _compose_base_url(host, port)
-    return f"{base_url}/agents/{agent_name}"
+    return f"{base_url}/a2a/agents/{agent_name}/"
 
 
 def _compose_cancel_url(host: str, port: int) -> str:
     base_url = _compose_base_url(host, port)
-    return f"{base_url}/agents/cancel"
+    return f"{base_url}/a2a/agents/cancel"
 
 
 def query_agent(

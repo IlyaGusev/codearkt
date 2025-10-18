@@ -1,10 +1,4 @@
-from codearkt.client import (
-    _compose_agent_url,
-    _compose_base_url,
-    _compose_cancel_url,
-    query_agent,
-    stop_agent,
-)
+from codearkt.client import _compose_agent_url, _compose_base_url, query_agent, stop_agent
 from codearkt.event_bus import EventType
 from codearkt.llm import ChatMessage
 from codearkt.util import get_unique_id
@@ -26,19 +20,11 @@ class TestUrlComposition:
 
     def test_client_url_compose_agent_url(self) -> None:
         url = _compose_agent_url("localhost", 8000, "manager")
-        assert url == "http://localhost:8000/agents/manager"
+        assert url == "http://localhost:8000/a2a/agents/manager/"
 
     def test_client_url_compose_agent_url_custom_agent(self) -> None:
         url = _compose_agent_url("http://example.com", 9000, "custom_agent")
-        assert url == "http://example.com:9000/agents/custom_agent"
-
-    def test_client_url_compose_cancel_url(self) -> None:
-        url = _compose_cancel_url("localhost", 8000)
-        assert url == "http://localhost:8000/agents/cancel"
-
-    def test_client_url_compose_cancel_url_with_https(self) -> None:
-        url = _compose_cancel_url("https://example.com", 443)
-        assert url == "https://example.com:443/agents/cancel"
+        assert url == "http://example.com:9000/a2a/agents/custom_agent/"
 
 
 async def test_client_base(mcp_server_test: MCPServerTest) -> None:

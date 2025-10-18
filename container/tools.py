@@ -2,6 +2,7 @@ import asyncio
 import functools
 import os
 import traceback
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from typing import Any, Callable, Dict, List, Optional
@@ -11,6 +12,9 @@ import httpx
 from mcp import ClientSession, Tool
 from mcp.client.streamable_http import streamablehttp_client
 from mcp.types import CallToolResult, ContentBlock
+from a2a.client import ClientConfig, minimal_agent_card
+from a2a.client import ClientFactory
+from a2a.types import Message, TextPart
 from pydantic import ValidationError
 
 AGENT_TIMEOUT = int(os.getenv("AGENT_TIMEOUT", 24 * 60 * 60))
@@ -103,6 +107,35 @@ def _call(tool: str, tool_server_port: int, *args: Any, **kwargs: Any) -> ToolRe
         executor.shutdown(wait=False, cancel_futures=True)
 
 
+async def _acall_a2a_agent(url: str, query: str, session_id: str) -> str:
+    last_event = None
+
+    async with httpx.AsyncClient(timeout=AGENT_TIMEOUT) as httpx_client:
+        config = ClientConfig(httpx_client=httpx_client)
+        factory = ClientFactory(config)
+        card = minimal_agent_card(url)
+        client = factory.create(card)
+
+        context_id = session_id
+        message = Message(
+            messageId=str(uuid.uuid4()),
+            parts=[TextPart(text=query)],
+            role="user",
+            contextId=context_id,
+        )
+        async for event in client.send_message(message):
+            last_event = event
+
+    assert isinstance(last_event, tuple)
+    task = last_event[0]
+    artifacts = task.artifacts
+    assert artifacts is not None
+    assert isinstance(artifacts, list)
+    assert len(artifacts) > 0
+    response = artifacts[0].parts[0].root.text
+    return response
+
+
 async def fetch_tools(
     tool_server_port: Optional[int] = None,
 ) -> Dict[str, Callable[..., ToolReturnType]]:
@@ -135,34 +168,41 @@ async def fetch_tools(
         print(traceback.format_exc())
         pass
 
-    agent_cards = []
+    agent_infos = []
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(base_url + "/agents/list")
+            response = await client.get(base_url + "/a2a/agents")
             response.raise_for_status()
-            agent_cards = response.json()
+            agent_infos = response.json()["agents"]
     except Exception:
         print("Failed to fetch agents")
         print(traceback.format_exc())
         pass
 
-    for card in agent_cards:
-        agent_name = card["name"]
-        url = base_url + f"/agents/{agent_name}"
+    for info in agent_infos:
+        agent_name = info["name"]
+        url = base_url.rstrip("/") + f"/a2a/agents/{agent_name}/"
 
         def create_call_agent(url: str) -> Callable[..., Any]:
             def _call_agent(query: str, session_id: str) -> Any:
-                payload = {
-                    "messages": [{"role": "user", "content": query}],
-                    "session_id": session_id,
-                    "stream": False,
-                }
-                resp = httpx.post(url, json=payload, timeout=AGENT_TIMEOUT)
-                resp.raise_for_status()
-                return resp.json()
+                def runner() -> ToolReturnType:
+                    return asyncio.run(_acall_a2a_agent(url, query, session_id))
+
+                executor = ThreadPoolExecutor(max_workers=1)
+                try:
+                    future = executor.submit(runner)
+                    return future.result(timeout=AGENT_TIMEOUT + 5)
+                finally:
+                    executor.shutdown(wait=False, cancel_futures=True)
 
             return _call_agent
 
         final_tools["agent__" + agent_name] = create_call_agent(url)
 
     return final_tools
+
+
+if __name__ == "__main__":
+    query = "Get a title of the 2409.06820 paper"
+    tools = asyncio.run(fetch_tools(8888))
+    print(tools["agent__manager"](query, "123"))

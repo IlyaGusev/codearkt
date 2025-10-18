@@ -2,3 +2,4 @@ fastapi
 uvicorn
 requests
 mcp[http]==1.10.1 
+a2a-sdk[http-server]==0.3.8

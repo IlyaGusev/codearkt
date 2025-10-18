@@ -1,26 +1,16 @@
 import asyncio
 import contextlib
-import logging
 import time
-from datetime import datetime
 from pathlib import Path
-from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import uvicorn
 from fastapi import FastAPI
-from fastapi.responses import StreamingResponse
-from fastmcp import FastMCP
 from fastmcp import settings as fastmcp_settings
-from fastmcp.client.transports import ClientTransport, SSETransport, StreamableHttpTransport
-from fastmcp.mcp_config import (
-    MCPConfig,
-    RemoteMCPServer,
-    StdioMCPServer,
-    infer_transport_type_from_url,
-)
-from pydantic import BaseModel
 from sse_starlette.sse import AppStatus
 
+from codearkt.app_a2a import get_a2a_app
+from codearkt.app_mcp import get_mcp_app
 from codearkt.codeact import CodeActAgent
 from codearkt.event_bus import AgentEventBus
 from codearkt.llm import ChatMessage
@@ -28,16 +18,7 @@ from codearkt.metrics import TokenUsageStore
 from codearkt.settings import settings
 from codearkt.util import append_jsonl_atomic, find_free_port, get_unique_id
 
-
 fastmcp_settings.stateless_http = True
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-
-
-def _log(message: str, session_id: str, level: int = logging.INFO) -> None:
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    message = f"| {timestamp} | {session_id:<8} | {message}"
-    logger.log(level, message)
 
 
 async def _wait_until_started(server: uvicorn.Server) -> None:
@@ -50,158 +31,6 @@ def reset_app_status() -> None:
     AppStatus.should_exit_event = None
 
 
-class AgentRequest(BaseModel):  # type: ignore
-    messages: List[ChatMessage]
-    session_id: Optional[str] = None
-    stream: bool = False
-
-
-class AgentCard(BaseModel):  # type: ignore
-    name: str
-    description: str
-
-
-AGENT_RESPONSE_HEADERS = {
-    "Cache-Control": "no-cache",
-    "Connection": "keep-alive",
-    "X-Accel-Buffering": "no",
-}
-
-
-def create_agent_endpoint(
-    agent_app: FastAPI,
-    agent_instance: CodeActAgent,
-    server_host: str,
-    server_port: int,
-    event_bus: AgentEventBus,
-    token_usage_store: TokenUsageStore | None = None,
-) -> Callable[..., Any]:
-    @agent_app.post(f"/{agent_instance.name}")  # type: ignore
-    async def agent_tool(request: AgentRequest) -> Any:
-        session_id = request.session_id or get_unique_id()
-
-        def _start_agent_task() -> asyncio.Task[Any]:
-            task = asyncio.create_task(
-                agent_instance.ainvoke(
-                    messages=request.messages,
-                    session_id=session_id,
-                    event_bus=event_bus,
-                    token_usage_store=token_usage_store,
-                    server_host=server_host,
-                    server_port=server_port,
-                )
-            )
-            event_bus.register_task(
-                session_id=session_id,
-                agent_name=agent_instance.name,
-                task=task,
-            )
-            return task
-
-        async def stream_response() -> AsyncGenerator[str, None]:
-            async for event in event_bus.stream_events(session_id):
-                yield event.model_dump_json() + "\n"
-
-        task = _start_agent_task()
-
-        if request.stream:
-            return StreamingResponse(
-                stream_response(),
-                media_type="application/x-ndjson",
-                headers=AGENT_RESPONSE_HEADERS,
-            )
-        else:
-            result = await task
-            return result
-
-    return agent_tool  # type: ignore
-
-
-class CancelRequest(BaseModel):  # type: ignore
-    session_id: str
-
-
-def get_agent_app(
-    agent: CodeActAgent,
-    server_host: str,
-    server_port: int,
-    event_bus: AgentEventBus,
-    token_usage_store: TokenUsageStore | None = None,
-) -> FastAPI:
-    agent_app = FastAPI(
-        title="CodeArkt Agent App", description="Agent app for CodeArkt", version="1.0.0"
-    )
-
-    agent_cards = []
-    for sub_agent in agent.get_all_agents():
-        agent_cards.append(AgentCard(name=sub_agent.name, description=sub_agent.description))
-        create_agent_endpoint(
-            agent_app=agent_app,
-            agent_instance=sub_agent,
-            server_host=server_host,
-            server_port=server_port,
-            event_bus=event_bus,
-            token_usage_store=token_usage_store,
-        )
-
-    async def cancel_session(request: CancelRequest) -> Dict[str, str]:
-        _log("Finishing session for all agents", request.session_id)
-        event_bus.finish_session(request.session_id)
-        return {"status": "cancelled", "session_id": request.session_id}
-
-    async def get_agents() -> List[AgentCard]:
-        return agent_cards
-
-    agent_app.get("/list")(get_agents)
-    agent_app.post("/cancel")(cancel_session)
-    return agent_app
-
-
-def get_mcp_app(
-    mcp_config: Optional[Dict[str, Any]],
-    additional_tools: Optional[Dict[str, Callable[..., Any]]] = None,
-    add_prefixes: bool = True,
-) -> FastAPI:
-    mcp: FastMCP[Any] = FastMCP(name="Codearkt MCP Proxy")
-    if mcp_config:
-        cfg = MCPConfig.from_dict(mcp_config)
-        server_count = len(cfg.mcpServers)
-
-        for name, server in cfg.mcpServers.items():
-            transport: Optional[ClientTransport] = None
-            if isinstance(server, RemoteMCPServer):
-                transport_type = server.transport or infer_transport_type_from_url(server.url)
-                if transport_type == "sse":
-                    transport = SSETransport(
-                        server.url,
-                        headers=server.headers,
-                        auth=server.auth,
-                        sse_read_timeout=settings.PROXY_SSE_READ_TIMEOUT,
-                    )
-                else:
-                    transport = StreamableHttpTransport(
-                        server.url,
-                        headers=server.headers,
-                        auth=server.auth,
-                        sse_read_timeout=settings.PROXY_SSE_READ_TIMEOUT,
-                    )
-            elif isinstance(server, StdioMCPServer):
-                transport = server.to_transport()
-
-            assert transport is not None, "Transport is required for the MCP server in the config"
-            sub_proxy = FastMCP.as_proxy(backend=transport)
-            prefix: Optional[str] = None if server_count == 1 else name
-            if not add_prefixes:
-                prefix = None
-            mcp.mount(prefix=prefix, server=sub_proxy)
-
-    if additional_tools:
-        for name, tool in additional_tools.items():
-            mcp.tool(tool, name=name)
-
-    return mcp.http_app()
-
-
 def get_main_app(
     agent: CodeActAgent,
     event_bus: AgentEventBus,
@@ -212,15 +41,21 @@ def get_main_app(
     additional_tools: Optional[Dict[str, Callable[..., Any]]] = None,
     add_mcp_server_prefixes: bool = True,
 ) -> FastAPI:
-    agent_app = get_agent_app(
+    mcp_app = get_mcp_app(
+        mcp_config=mcp_config,
+        additional_tools=additional_tools,
+        add_prefixes=add_mcp_server_prefixes,
+    )
+
+    a2a_app = get_a2a_app(
         agent=agent,
         server_host=server_host,
         server_port=server_port,
         event_bus=event_bus,
         token_usage_store=token_usage_store,
     )
-    mcp_app = get_mcp_app(mcp_config, additional_tools, add_prefixes=add_mcp_server_prefixes)
-    mcp_app.mount("/agents", agent_app)
+
+    mcp_app.mount("/a2a", a2a_app)
     return mcp_app
 
 
