@@ -5,9 +5,7 @@ from typing import Dict, List, Optional, Any
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events.event_queue import EventQueue
-from a2a.server.apps import A2AStarletteApplication
-from a2a.server.request_handlers import DefaultRequestHandler
-from a2a.server.tasks import InMemoryTaskStore, TaskStore, TaskUpdater
+from a2a.server.tasks import TaskUpdater
 from a2a.types import (
     AgentCard,
     AgentCapabilities,
@@ -33,7 +31,7 @@ class CodeArktAgentExecutor(AgentExecutor):
         token_usage_store: Optional[TokenUsageStore] = None,
         server_host: str = settings.DEFAULT_SERVER_HOST,
         server_port: int = settings.DEFAULT_SERVER_PORT,
-    ):
+    ) -> None:
 
         self.agent = agent
         self.event_bus = event_bus
@@ -48,9 +46,11 @@ class CodeArktAgentExecutor(AgentExecutor):
         assert task_id is not None
         context_id = context.context_id
         assert context_id is not None
+
         updater = TaskUpdater(event_queue, task_id, context_id)
         message_content = self._extract_message_content(context)
-        self.histories[context_id].append(ChatMessage(role="user", content=message_content))
+        user_message = ChatMessage(role="user", content=message_content)
+        self.histories[context_id].append(user_message)
 
         def _start_agent_task() -> asyncio.Task[Any]:
             task = asyncio.create_task(
@@ -72,10 +72,23 @@ class CodeArktAgentExecutor(AgentExecutor):
 
         task = _start_agent_task()
         self.running_tasks[task_id] = task
-        result = await task
-        self.histories[context_id].append(ChatMessage(role="assistant", content=result))
+
+        async def stream_handler() -> None:
+            async for event in self.event_bus.stream_events(context_id):
+                message = updater.new_agent_message(
+                    [Part(root=TextPart(text=event.model_dump_json()))],
+                    metadata={"is_event_bus_event": True},
+                )
+                if not event_queue.is_closed():
+                    await event_queue.enqueue_event(message)
+
+        stream_task = asyncio.create_task(stream_handler())
+        final_result, _ = await asyncio.gather(task, stream_task)
+
+        result_message = ChatMessage(role="assistant", content=final_result)
+        self.histories[context_id].append(result_message)
         await updater.add_artifact(
-            [Part(root=TextPart(text=result))],
+            [Part(root=TextPart(text=final_result))],
             name="final_result",
         )
         await updater.complete()
@@ -134,58 +147,3 @@ def create_agent_card(
         defaultInputModes=["text"],
         defaultOutputModes=["text"],
     )
-
-
-def create_a2a_app_for_agent(
-    agent: CodeActAgent,
-    event_bus: AgentEventBus,
-    token_usage_store: Optional[TokenUsageStore] = None,
-    server_host: str = "localhost",
-    server_port: int = 8000,
-    task_store: Optional[TaskStore] = None,
-) -> A2AStarletteApplication:
-    server_url = f"http://{server_host}:{server_port}"
-    agent_card = create_agent_card(agent, server_url)
-
-    agent_executor = CodeArktAgentExecutor(
-        agent=agent,
-        event_bus=event_bus,
-        token_usage_store=token_usage_store,
-        server_host=server_host,
-        server_port=server_port,
-    )
-
-    if task_store is None:
-        task_store = InMemoryTaskStore()
-
-    request_handler = DefaultRequestHandler(
-        agent_executor=agent_executor,
-        task_store=task_store,
-    )
-
-    return A2AStarletteApplication(
-        agent_card=agent_card,
-        http_handler=request_handler,
-    )
-
-
-def create_multi_agent_a2a_app(
-    agents: List[CodeActAgent],
-    event_bus: AgentEventBus,
-    token_usage_store: Optional[TokenUsageStore] = None,
-    server_host: str = "localhost",
-    server_port: int = 8000,
-) -> Dict[str, A2AStarletteApplication]:
-    apps = {}
-
-    for agent in agents:
-        app = create_a2a_app_for_agent(
-            agent=agent,
-            event_bus=event_bus,
-            token_usage_store=token_usage_store,
-            server_host=server_host,
-            server_port=server_port,
-        )
-        apps[agent.name] = app
-
-    return apps

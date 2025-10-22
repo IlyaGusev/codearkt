@@ -160,7 +160,9 @@ class TestCodeActAgent:
         )
         assert "Player" in str(result), result
 
-    async def test_codeact_multi_agent(self, deepseek: LLM, mcp_server_test: MCPServerTest) -> None:
+    async def test_codeact_multi_agent_base(
+        self, deepseek: LLM, mcp_server_test: MCPServerTest
+    ) -> None:
         _ = mcp_server_test
         agent = CodeActAgent(
             name="agent",

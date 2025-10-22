@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Union, Optional
 
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
@@ -6,11 +6,70 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.routing import Mount
 from starlette.responses import JSONResponse
 from starlette.routing import Route
+from a2a.server.apps import A2AStarletteApplication
+from a2a.server.request_handlers import DefaultRequestHandler
+from a2a.server.tasks import InMemoryTaskStore, TaskStore
 
-from codearkt.agent_executor import create_multi_agent_a2a_app
 from codearkt.codeact import CodeActAgent
 from codearkt.event_bus import AgentEventBus
 from codearkt.metrics import TokenUsageStore
+from codearkt.agent_executor import CodeArktAgentExecutor
+from codearkt.agent_executor import create_agent_card
+
+
+def create_a2a_app_for_agent(
+    agent: CodeActAgent,
+    event_bus: AgentEventBus,
+    token_usage_store: Optional[TokenUsageStore] = None,
+    server_host: str = "localhost",
+    server_port: int = 8000,
+    task_store: Optional[TaskStore] = None,
+) -> A2AStarletteApplication:
+    server_url = f"http://{server_host}:{server_port}"
+    agent_card = create_agent_card(agent, server_url)
+
+    agent_executor = CodeArktAgentExecutor(
+        agent=agent,
+        event_bus=event_bus,
+        token_usage_store=token_usage_store,
+        server_host=server_host,
+        server_port=server_port,
+    )
+
+    if task_store is None:
+        task_store = InMemoryTaskStore()
+
+    request_handler = DefaultRequestHandler(
+        agent_executor=agent_executor,
+        task_store=task_store,
+    )
+
+    return A2AStarletteApplication(
+        agent_card=agent_card,
+        http_handler=request_handler,
+    )
+
+
+def create_multi_agent_a2a_app(
+    agents: List[CodeActAgent],
+    event_bus: AgentEventBus,
+    token_usage_store: Optional[TokenUsageStore] = None,
+    server_host: str = "localhost",
+    server_port: int = 8000,
+) -> Dict[str, A2AStarletteApplication]:
+    apps = {}
+
+    for agent in agents:
+        app = create_a2a_app_for_agent(
+            agent=agent,
+            event_bus=event_bus,
+            token_usage_store=token_usage_store,
+            server_host=server_host,
+            server_port=server_port,
+        )
+        apps[agent.name] = app
+
+    return apps
 
 
 def get_a2a_app(
